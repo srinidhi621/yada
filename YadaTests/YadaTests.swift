@@ -449,6 +449,20 @@ final class InsertionTests: XCTestCase {
         XCTAssertNil(FieldDelivery.choose(bundleID: "unknown", selectedTextSettable: false))
     }
 
+    func testMicrosoftPasteCannotBypassSecureDisabledOrNonTextFields() {
+        let bundle = "com.microsoft.teams2"
+        XCTAssertEqual(FieldDelivery.assess(bundleID: bundle, role: "AXTextField", subrole: "AXSecureTextField", enabled: true, selectedTextSettable: true), .failure(.secure))
+        XCTAssertEqual(FieldDelivery.assess(bundleID: bundle, role: "AXTextArea", subrole: nil, enabled: false, selectedTextSettable: false), .failure(.disabled))
+        XCTAssertEqual(FieldDelivery.assess(bundleID: bundle, role: "AXButton", subrole: nil, enabled: true, selectedTextSettable: true), .failure(.notText))
+        XCTAssertEqual(FieldDelivery.assess(bundleID: bundle, role: nil, subrole: nil, enabled: nil, selectedTextSettable: false), .failure(.notText))
+        XCTAssertEqual(FieldDelivery.assess(bundleID: bundle, role: "AXTextArea", subrole: nil, enabled: true, selectedTextSettable: false), .success(.paste))
+    }
+
+    func testUnsupportedNativeEditorHasDistinctFailureFromNonTextControl() {
+        XCTAssertEqual(FieldDelivery.assess(bundleID: "native.editor", role: "AXTextArea", subrole: nil, enabled: true, selectedTextSettable: false), .failure(.unsupported))
+        XCTAssertEqual(FieldDelivery.assess(bundleID: "native.editor", role: "AXTextArea", subrole: nil, enabled: nil, selectedTextSettable: true), .success(.selectedText))
+    }
+
     func testMissingPermissionDoesNotStartMicrophone() {
         var created = false
         let controller = SessionController { created = true; return FakeRecognition() }

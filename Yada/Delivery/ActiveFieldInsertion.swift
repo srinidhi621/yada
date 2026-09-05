@@ -40,6 +40,17 @@ struct FieldSnapshot: Equatable {
     }
 }
 
+enum FieldCaptureIssue: String, Error {
+    case noFocus = "No active text field was found. Click inside the destination before starting dictation. This transcript will stay in Yada."
+    case notText = "The focused control is not a supported text field. Click inside the message or document body before starting dictation. This transcript will stay in Yada."
+    case secure = "This is a protected text field. Yada will keep the transcript in preview."
+    case disabled = "The destination field is disabled. This transcript will stay in Yada."
+    case unsupported = "This editor does not allow direct text insertion. Your transcript will be available in Yada to copy."
+    case unreadableText = "This editor does not expose its text for insertion checks. Your transcript will be available in Yada to copy."
+    case unreadableSelection = "This editor does not expose its cursor or selection. Your transcript will be available in Yada to copy."
+    case invalidSelection = "The editor returned a selection outside its current text. Your transcript will stay in Yada; try again after the editor finishes updating."
+}
+
 enum FieldDelivery: Equatable {
     case selectedText, paste
 
@@ -50,6 +61,18 @@ enum FieldDelivery: Equatable {
         }
         return selectedTextSettable ? .selectedText : nil
     }
+
+    static func assess(bundleID: String, role: String?, subrole: String?, enabled: Bool?,
+                       selectedTextSettable: Bool) -> Result<FieldDelivery, FieldCaptureIssue> {
+        guard subrole != kAXSecureTextFieldSubrole else { return .failure(.secure) }
+        guard let role, [kAXTextAreaRole, kAXTextFieldRole].contains(role) else { return .failure(.notText) }
+        guard enabled != false else { return .failure(.disabled) }
+        guard let delivery = choose(bundleID: bundleID, selectedTextSettable: selectedTextSettable) else {
+            return .failure(.unsupported)
+        }
+        return .success(delivery)
+    }
+
 }
 
 @MainActor
@@ -94,12 +117,20 @@ final class ActiveFieldInsertion: InsertionTarget {
         guard AXIsProcessTrusted() else { return .needsAccessibility }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(appElement, 0.3)
-        guard let element = focusedElement(appElement),
-              let delivery = deliveryMethod(element, bundleID: bundleID),
-              let text = stringAttribute(element, kAXValueAttribute),
-              let selection = selectedRange(element),
-              let snapshot = FieldSnapshot(text: text, selection: selection) else {
-            return .preview("This field does not expose enough information for reliable insertion. Your transcript will be available here to copy.")
+        guard let element = focusedElement(appElement) else { return .preview(FieldCaptureIssue.noFocus.rawValue) }
+        let delivery: FieldDelivery
+        switch deliveryMethod(element, bundleID: bundleID) {
+        case .success(let method): delivery = method
+        case .failure(let issue): return .preview(issue.rawValue)
+        }
+        guard let text = stringAttribute(element, kAXValueAttribute) else {
+            return .preview(FieldCaptureIssue.unreadableText.rawValue)
+        }
+        guard let selection = selectedRange(element) else {
+            return .preview(FieldCaptureIssue.unreadableSelection.rawValue)
+        }
+        guard let snapshot = FieldSnapshot(text: text, selection: selection) else {
+            return .preview(FieldCaptureIssue.invalidSelection.rawValue)
         }
         AXUIElementSetMessagingTimeout(element, 0.3)
         return .target(ActiveFieldInsertion(pid: app.processIdentifier, bundleID: bundleID, element: element, snapshot: snapshot, delivery: delivery))
@@ -115,7 +146,7 @@ final class ActiveFieldInsertion: InsertionTarget {
               NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.3)
-        guard let focused = Self.focusedElement(app), CFEqual(focused, element), Self.deliveryMethod(element, bundleID: bundleID) == delivery,
+        guard let focused = Self.focusedElement(app), CFEqual(focused, element), Self.deliveryMethod(element, bundleID: bundleID) == .success(delivery),
               let selection = Self.selectedRange(element),
               let text = Self.stringAttribute(element, kAXValueAttribute),
               FieldSnapshot(text: text, selection: selection) == snapshot else { return nil }
@@ -170,14 +201,14 @@ final class ActiveFieldInsertion: InsertionTarget {
         return .uncertain("Insertion was requested, but could not be verified. Check the destination before copying again. Yada will not retry automatically.")
     }
 
-    private static func deliveryMethod(_ element: AXUIElement, bundleID: String) -> FieldDelivery? {
-        guard let role = stringAttribute(element, kAXRoleAttribute),
-              [kAXTextAreaRole, kAXTextFieldRole].contains(role),
-              stringAttribute(element, kAXSubroleAttribute) != kAXSecureTextFieldSubrole,
-              attribute(element, kAXEnabledAttribute) as? Bool != false else { return nil }
+    private static func deliveryMethod(_ element: AXUIElement, bundleID: String) -> Result<FieldDelivery, FieldCaptureIssue> {
         var settable = DarwinBoolean(false)
         let writable = AXUIElementIsAttributeSettable(element, kAXSelectedTextAttribute as CFString, &settable) == .success && settable.boolValue
-        return FieldDelivery.choose(bundleID: bundleID, selectedTextSettable: writable)
+        return FieldDelivery.assess(bundleID: bundleID,
+            role: stringAttribute(element, kAXRoleAttribute),
+            subrole: stringAttribute(element, kAXSubroleAttribute),
+            enabled: attribute(element, kAXEnabledAttribute) as? Bool,
+            selectedTextSettable: writable)
     }
 
     private static func focusedElement(_ app: AXUIElement) -> AXUIElement? {

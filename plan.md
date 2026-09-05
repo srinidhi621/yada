@@ -6,7 +6,7 @@ Updated: September 6, 2026. This is the delivery checklist; `Yada_Product_and_Te
 
 Version 0.1.0 is on `main` (initial release commit `a75d04d`). It includes local Apple transcription, a configurable start/stop shortcut (currently Control+Y), Dock and menu-bar access, a small recording pill, local history of 50 transcripts, and automatic insertion. Native accessible fields use direct selected-text writes. Installed Outlook and Teams use a guarded paste path that leaves the transcript on the local clipboard. No message is sent automatically.
 
-The current build passes 27 automated tests. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
+The current build passes 29 automated tests. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
 
 ## Ground rules
 
@@ -41,7 +41,7 @@ The current build passes 27 automated tests. The user has confirmed transcriptio
 
 Files: `Yada/Delivery/ActiveFieldInsertion.swift`, controller/UI only where needed, `YadaTests/YadaTests.swift`, `docs/mvp2-acceptance.md`, verification skill.
 
-Gate: no wrong-target insertion, duplicate retry, unintended submission or command execution; honest recovery for unsupported fields. Physical tests remain pending until actually run. Step 1.1 is the next work to start while the user is away.
+Gate: no wrong-target insertion, duplicate retry, unintended submission or command execution; honest recovery for unsupported fields. Physical tests remain pending until actually run. Steps 1.1 and 1.2 are implemented; Step 1.3 passes all 29 tests. See the local follow-on section in docs/mvp2-acceptance.md. The user has authorized publishing these implementation changes to main. Steps 1.4 and 1.5 still require physical acceptance.
 
 ### 2. Add conservative, optional cleanup
 
@@ -116,6 +116,6 @@ Gate: no silent capture, no repeated nagging, no cloud calendar connector added 
 3. Run `xcodebuild -project Yada.xcodeproj -scheme Yada -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test`.
 4. Perform synthetic native UI checks when UI behavior changes. Keep user-driven microphone/permission checks explicitly pending.
 5. Review the final diff for leftovers, unnecessary layers and privacy/data-loss risks; update this checklist and the existing acceptance records.
-6. Commit and push only within the user's authorized scope. For this request: push this plan to `main`, then start Step 1.1 locally. Further implementation publication is not assumed.
+6. Commit and push only within the user's authorized scope. The user has authorized pushing the plan and the completed field-diagnostics changes to `main`. Future publication requires authorization for that scope.
 
 Do not start all roadmap phases at once. Complete one slice and its observable behavior before moving to the next; continue independent synthetic work while physical acceptance awaits the user.

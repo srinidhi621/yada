@@ -19,3 +19,9 @@ Start with a new TextEdit document, then test each desired compose surface in Co
 Check secure fields and known terminal apps remain in preview. Unsupported fields must explain the fallback; uncertain writes must not repeat. Required result: zero wrong-target insertions and no command execution. Compatibility, undo/formatting preservation and latency are unmeasured until these checks run. macOS cross-process reads and writes are not atomic.
 
 The Microsoft path still requires readable text and a readable selection. It never retries after a direct-write failure or uncertain paste. Focus may change between a final check and the target processing a queued event; process targeting and preflight checks reduce but cannot eliminate that race. Do not describe automatic tests as proof of Microsoft editor compatibility.
+
+## Local follow-on: actionable field failures
+
+After the plan commit, the local build distinguishes absent/non-text focus, protected or disabled fields, unsupported direct insertion, unreadable field text, missing selection and invalid selection. These reasons appear in the existing preview message; no new permission, per-app setting, logging or retained destination text was added.
+
+The full test command above passed 29 tests with zero failures. Result: `.build/Logs/Test/Test-Yada-2026.09.06_02-46-17-+0530.xcresult`. Added production-policy checks cover Microsoft paste rejection for protected/disabled/non-text fields, normal Microsoft paste eligibility, and distinct native unsupported-field behavior. Physical shortcut and Office acceptance remain pending.
