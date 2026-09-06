@@ -1,96 +1,187 @@
 # Yada
 
-A native macOS dictation app with a Dock icon, menu-bar controls, and a floating recording pill. Yada records microphone audio, transcribes with Apple's on-device SpeechTranscriber, and inserts finalized text into supported active text fields when started with the global shortcut.
+<img src="docs/assets/yada-icon.png" alt="Yada application icon" width="96">
 
-## Build and run
+**Dictate where you type, with speech processing on your Mac.**
 
-Requires Apple Silicon, macOS 26 or newer, and stable Xcode 26 with the macOS SDK. No simulator, predictive completion model, Apple Developer subscription, API key, Python backend, or inference server is required. The local development build uses ad-hoc signing; distribution is out of scope.
+Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Optional cleanup fixes spacing and your saved terminology; Apple’s on-device model can prepare prose, bullets or an email draft for review.
 
-From this directory:
+**Status:** early personal-development build. The latest automated suite passes 41 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
+
+## What it does
+
+- Transcribes microphone audio with Apple’s on-device SpeechTranscriber.
+- Starts and stops from one configurable global shortcut, with menu-bar and floating-pill controls.
+- Inserts into supported active text fields, with preview recovery when the destination cannot be verified.
+- Offers Raw, Clean, Prose, Bullets and Email text modes.
+- Keeps the last 50 finalized transcripts locally, including available raw, cleaned and formatted versions.
+- Appears in the Dock and Command–Tab and stays running when its window closes.
+
+Yada does not record system audio, capture meetings, identify speakers or generate meeting notes yet. It does not send messages, submit forms or execute dictated commands.
+
+## Requirements
+
+| Requirement | Purpose |
+| --- | --- |
+| Apple Silicon Mac running macOS 26 or newer | Native speech and app runtime |
+| Xcode 26 with the macOS SDK | Build and run from source |
+| Installed Apple speech assets for your language | On-device transcription |
+| Microphone permission | Dictation |
+| Accessibility permission | Automatic text insertion |
+| Apple Intelligence enabled and its model ready | Optional Prose, Bullets and Email modes |
+
+Raw and Clean do not require Apple Intelligence. No API key, Python environment, inference server, simulator or Xcode predictive completion model is needed. A paid Apple Developer account is not required for this local ad-hoc-signed build.
+
+Initial Swift package resolution and any missing Apple language/model assets need an internet connection. Yada has no hosted inference fallback.
+
+## Build and launch
+
+Get the repository source, then use either Xcode or Terminal.
+
+### In Xcode
+
+1. Open `Yada.xcodeproj`.
+2. Allow Swift Package Manager to resolve dependencies.
+3. Select the **Yada** scheme and **My Mac** destination.
+4. Choose **Product → Run**, or press **Command+R**.
+
+### In Terminal
+
+From the repository root:
 
 ```sh
-xcodebuild -project Yada.xcodeproj -scheme Yada -destination 'platform=macOS,arch=arm64' -derivedDataPath .build build
-xcodebuild -project Yada.xcodeproj -scheme Yada -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test
+xcodebuild -project Yada.xcodeproj -scheme Yada \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build build
+
 open .build/Build/Products/Debug/Yada.app
 ```
 
-Alternatively, open `Yada.xcodeproj` in Xcode, choose the Yada scheme and My Mac, then Run. Xcode resolves the sole third-party dependency, KeyboardShortcuts 3.0.1, through Swift Package Manager. Keep the checked-in package lock. Initial dependency resolution needs internet access; recognition does not use a hosted fallback.
+The app bundle is `.build/Build/Products/Debug/Yada.app`. You can also open it in Finder; press **Command+Shift+G** and enter that folder’s absolute path. Finder hides folders beginning with a dot by default.
 
-## First use
+After rebuilding, preserve any current text, quit the running Yada instance, and reopen the bundle to use the new build. To keep a Dock shortcut, right-click Yada’s Dock icon and choose **Options → Keep in Dock**. Yada does not automatically configure login startup.
 
-1. Choose a shortcut in the setup window. There is no default global binding. Use a chord separate from Wispr Flow's Fn; Yada rejects shortcuts with the Fn modifier.
-2. Select a speech language and Check language. English (India) is the initial preference, subject to Apple's runtime support. Choose a supported alternative if unavailable.
-3. If assets are absent, explicitly choose Download language. This contacts Apple for a one-time language download and displays progress. No audio is captured during download. Apple manages the system assets and their updates.
-4. Choose Start recording, or use your shortcut. Grant the microphone permission when macOS asks. Wait for **Recording** before speaking; **Preparing** means capture is not ready.
-5. Stop using the shortcut or Stop and finalize. Yada drains queued audio, flushes the format converter, finalizes recognition, and waits for final results.
-6. When started with the shortcut in a supported external text field, finalized text is inserted automatically. Recording started inside Yada returns a preview. Unsupported or changed destinations also return a preview with Copy. Cancel discards the session; Clear discards current text. Closing the window leaves Yada running. Click its Dock icon or use Show Yada in the menu bar to reopen it. Quit ends the process.
+## First-time setup
 
-Denied microphone access is recoverable in System Settings → Privacy & Security → Microphone. Yada does not change permissions for you. Shortcut registration needs no Accessibility permission. Automatic insertion does: on the first shortcut in another app, allow Yada in System Settings → Privacy & Security → Accessibility, then return to the text field and use Control+Y again. Yada does not start recording while that permission is missing. This app uses SpeechTranscriber, not the older potentially server-backed SFSpeechRecognizer path; no legacy Speech authorization request is made.
+1. In Yada’s **Setup** section, choose a recording shortcut. **Control+Y** is the current development setup, but new installations have no default binding. Choose a chord that does not conflict with another app. Fn shortcuts are rejected to leave Fn available for Wispr Flow.
+2. Select a speech language and choose **Check language**. English (India) is the initial preference; availability depends on Apple’s supported locales.
+3. If needed, choose **Download language** and wait for setup to finish. No microphone audio is captured during this download.
+4. Start a recording and grant microphone access when macOS asks. If previously denied, enable Yada under **System Settings → Privacy & Security → Microphone**.
+5. For automatic insertion, allow Yada under **System Settings → Privacy & Security → Accessibility** when prompted. Return to your text field and press the shortcut again. A missing Accessibility permission prevents that external-field recording from starting.
 
-## Scope and privacy
+For model formatting, also enable **Apple Intelligence** under **System Settings → Apple Intelligence & Siri**, let its setup finish, and use **Check model** in Yada. The app reports availability; it does not change these settings for you.
 
-- One app target and one test target, using SwiftUI/AppKit, AVAudioEngine and SpeechAnalyzer/SpeechTranscriber.
-- No cloud inference, system audio, meeting features, database, audio files, telemetry, analytics or cloud fallback.
-- Audio remains in memory only. At the user’s request, the 50 most recent nonempty finalized transcripts are saved as JSON under `~/Library/Application Support/Yada/RecentTranscripts.json` (directory permissions 0700; file permissions 0600). No audio is saved. Preferences keep the chosen shortcut and speech locale. Starting another session replaces the current preview; older finalized text remains in history until deleted or evicted by the 50-entry limit. Cancel discards the active session without saving it. Clear removes only the current preview. Recent transcripts → Delete/Clear history removes saved copies; copied text elsewhere and external backups are outside this control. Local files are not application-encrypted; external backup software may copy them.
-- Copy uses `NSPasteboard`'s `currentHostOnly` option. Clipboard managers can still read or sync copied contents. Yada does not clear the clipboard when its preview clears.
-- The preview is deliberately not directly selectable: copying goes through the explicit current-host-only Copy action after finalization.
-- “Raw” means unchanged recognizer output. Apple ASR may normalize punctuation or omit disfluencies; it is not necessarily verbatim speech.
-- A bounded 32-buffer handoff separates the microphone tap from conversion and recognition. Overflow or device reconfiguration fails visibly instead of silently dropping audio. This is a nonblocking producer handoff, not a hard-real-time or allocation-free guarantee.
-- Duration measurements shown in the window are per-session capture readiness and stop-to-final milliseconds, measured with a monotonic clock. They include preparation/permission delay; no benchmark claims are implied.
+## Everyday dictation
 
-## Verification
+1. Click inside the destination text field.
+2. Press your shortcut, such as **Control+Y**.
+3. Wait for **Listening** in the pill or **Recording** in Yada, then speak.
+4. Press the same shortcut again to stop and finalize.
+5. In Raw or Clean mode, Yada inserts into the supported destination and keeps it focused after verified insertion.
 
-See [automatic insertion acceptance](docs/mvp2-acceptance.md) and [MVP 1 acceptance](docs/mvp1-acceptance.md) for actual results and pending physical tests. The repository verification skill is `.agents/skills/verify-project/SKILL.md`. Tests exercise the production transcript assembler, lifecycle controller and audio converter with synthetic inputs. They do not prove live microphone, offline speech, shortcut coexistence or clipboard behavior.
+The bottom-right pill shows microphone-driven level bars while listening. Its Stop button also finalizes; its X button cancels the recording. You can drag the pill’s background. Its position lasts until the app quits.
 
-Keep personal evaluation audio and transcripts outside this repository and outside cloud coding-agent context. There is no diagnostic fixture recording mode in MVP 1.
+Starting from Yada’s own window produces a preview. If insertion is unsupported, the app or cursor changed, or delivery cannot be verified, Yada keeps the text available for review and copying. It never automatically retries an uncertain insertion. Check the destination before copying again.
 
-## Sources and dependency
+## Text modes
 
-- [Apple SpeechAnalyzer introduction](https://developer.apple.com/videos/play/wwdc2025/277/)
-- [SpeechTranscriber](https://developer.apple.com/documentation/speech/speechtranscriber)
-- [KeyboardShortcuts 3.0.1](https://github.com/sindresorhus/KeyboardShortcuts/tree/3.0.1), MIT. Its manifest has no additional package dependencies; license remains in the resolved source checkout.
-- The installed macOS SDK's Speech and AppKit declarations were checked during implementation.
+Choose **Text mode** in Setup before recording.
 
-The first-build prompt describes the initial slice. See [the build plan](plan.md) for current delivery status. The product specification records the subsequent user-approved Dock/pill/local-history extension. The automatic insertion extension is implemented; live application compatibility remains to be verified. Later roadmap phases are not implemented.
+| Mode | Processing | Delivery |
+| --- | --- | --- |
+| **Raw** (default) | Unchanged recognizer output | Automatic insertion into supported fields |
+| **Clean** | Repeated-space normalization and your terminology replacements | Automatic insertion into supported fields |
+| **Prose** | Cleanup, then one local model pass for faithful sentences | Review first |
+| **Bullets** | Cleanup, then one local model pass for bullet points | Review first |
+| **Email** | Cleanup, then one local model pass for an email draft | Review first; never sends email |
 
-## Dock, menu bar and recording pill
+“Raw” means Yada does not edit the recognizer’s output. Apple’s recognizer may already normalize punctuation or omit disfluencies.
 
-After upgrading, copy any current preview you need, quit the old Yada instance, and reopen the built app using the path above. Yada now appears in the Dock and Command–Tab while running. To retain its Dock shortcut after quitting, right-click its Dock icon and choose **Options → Keep in Dock**. No login/startup setting is changed.
+### Clean and terminology
 
-The menu-bar waveform icon provides Show Yada, Start/Stop, Cancel, recent transcripts, and Quit. macOS decides its position; Yada does not move another app's menu-bar item. Control+Y remains your existing saved shortcut.
+Clean preserves line breaks, explicit quotations, backticks, fenced code and indented lines. These are conservative syntax rules, not general code detection. It does not delete filler words or infer spoken corrections.
 
-The compact 230 × 44 point recording pill appears near the bottom-right of the active screen, above the Dock. Drag its background to position it beside Wispr's indicator. It stays above ordinary windows and joins desktop spaces without taking keyboard focus. Preparing and Finalizing use a progress indicator; Listening shows bars driven by actual microphone levels, not a looping fake waveform. Stop finalizes; X cancels. It hides when the session ends. The dragged position lasts while Yada is running; it is not saved across app restarts.
+Open **Terminology…** to add a recognized phrase and its replacement. Rules are case-sensitive, use word boundaries, and run once without triggering other rules. They apply outside protected quotes/code. Yada does not learn replacements by monitoring what you type in other apps.
 
-Recent transcripts lists the last 50 finalized results from this version onward. Select an entry to inspect, copy, or delete it. The previous build's unsaved transcripts cannot be recovered. History save/read errors are visible and never silently overwrite an unreadable history file.
+### Review model output
 
-For UI verification only, a Debug build accepts `--ui-preview`: it uses generated audio levels, synthetic text, in-memory history, and no global shortcut registration or microphone. Use an isolated app bundle identifier when another Yada instance is running. Release builds ignore this argument. This driver does not prove live microphone quality or persistent history; tests cover the persistence path separately.
+Prose, Bullets and Email use Apple’s on-device `SystemLanguageModel`, with no tools or cloud provider. Yada opens a review window when formatting starts.
 
-The Dock/Finder application icon is packaged in `Yada/Assets.xcassets/AppIcon.appiconset`, derived from the Primary App Icon in the user-provided `yada-v1.png` design sheet. The original sheet is preserved. The isolated transparent master is `docs/assets/yada-icon.png`; the asset catalog supplies all standard macOS icon sizes.
+1. Compare the result with **Original and cleanup → Raw**.
+2. Choose **Use reviewed text**.
+3. Click the destination field and press your shortcut once to insert that text. This press does not start recording.
 
-## Automatic insertion
+**Cancel pending insertion** disarms that one-shot action. You can instead copy the formatted result or choose **Use unformatted text**.
 
-Click the destination field, press Control+Y, speak after Listening appears, then press Control+Y to finalize and insert. No per-app setting or extra Insert button is needed. The destination keeps focus after verified insertion. TextEdit is the first manual test case, not an application restriction.
+The model is instructed to preserve meaning, remove only obvious fillers and resolve only unambiguous spoken corrections. It can still omit or change content. Number-change warnings are review aids, not an accuracy guarantee. Check names, negation, dates, commitments and code yourself.
 
-Yada uses macOS Accessibility to replace only the selected text of the captured field. The field must expose readable text and its selection. Native direct insertion also requires writable selected text; Outlook and Teams use the paste path without that requirement. Password fields, Secure Input and known terminal apps stay in preview. Other unsupported fields also fall back to preview. Switching apps, moving the cursor or editing text before delivery cancels automatic insertion. An uncertain write is never retried automatically; check the destination before copying.
+Formatting checks model and language availability at each request. Unsupported input, refusal, context errors, cancellation and a 30-second timeout preserve unformatted text. Passages over 3,000 UTF-8 bytes are rejected rather than silently shortened.
 
-Native-field insertion does not change the clipboard. The installed Outlook and Teams apps instead receive a single Command+V event sent to the captured process after the same destination checks. This path puts the transcript on the current-host-only clipboard and leaves it there, avoiding a timed restoration that could race a delayed paste. Clipboard managers may still read or sync it. No Return key is sent. Surrounding field text is read temporarily to compare fingerprints and verify the result; it is not logged or persisted. Only dictated transcripts enter Yada history. Cross-process checks and writes are not atomic, and editor undo/formatting behavior needs live testing.
+## Application compatibility
 
-Version 0.1.0 uses shortcut key-down for start/stop, and a running session can always receive Stop even during a language setup refresh. Automated checks pass; verify the physical shortcut and Microsoft compose fields after restarting the updated build.
+Automatic insertion depends on the text field, not just the app name. A field must expose readable text and cursor/selection information through macOS Accessibility.
 
-## Cleanup and local formatting
+- **Native accessible editors:** Yada replaces the selected text directly when that operation is supported. This path does not change the clipboard.
+- **Installed Outlook and Teams:** Yada uses a guarded Command+V event sent to the captured process. It places the transcript on the current-host-only clipboard and leaves it there so a delayed paste can read it.
+- **Unsupported or changed destinations:** Yada explains the failure and returns a preview.
+- **Password fields, Secure Input and known terminal apps:** automatic insertion is excluded.
 
-Select **Text mode** in Setup before recording:
+Yada never sends Return. Checks and cross-process delivery are not atomic, so they cannot eliminate every focus race. The current Microsoft paste path and physical shortcut behavior still require acceptance testing; they are not a promise of universal compatibility.
 
-- **Raw** (default): recognizer output, unchanged. Your shortcut stops and inserts as before.
-- **Clean**: collapse repeated horizontal spaces outside explicit quotes/code and apply your saved terminology. It keeps line breaks and indented/code text. It does not delete filler words or infer spoken corrections. Use **Terminology…** to add exact, case-sensitive phrase replacements. Replacements have word boundaries and do not cascade into each other. Clean uses no model.
-- **Prose / Bullets / Email**: clean, then make one request to Apple's on-device `SystemLanguageModel`. Yada opens for review rather than inserting automatically. No cloud provider, tools, email sending or additional inference package is used.
+## Privacy and local storage
 
-For a model result, compare it with **Original and cleanup → Raw**. Choose **Use reviewed text**, click the destination field, and press Control+Y once to insert that reviewed text. That press does not start recording. **Cancel pending insertion** disarms it. You can instead copy formatted text or use the unformatted version. Uncertain insertion is never retried automatically.
+Yada has no telemetry, analytics or cloud inference path. Microphone audio stays in memory and is not saved. The destination app controls what happens to text after insertion; dictating into a cloud-connected app does not make that app local.
 
-This Mac reported `appleIntelligenceNotEnabled` during implementation. Enable Apple Intelligence yourself in System Settings → Apple Intelligence & Siri, allow its model setup to finish, then use **Check model** in Yada. Raw and Clean work without it. Availability is checked again at each format request. Unsupported languages, refusal, context errors, empty output, cancellation or the 30-second timeout retain the original text. Input over 3,000 UTF-8 bytes is rejected rather than truncated. The app does not change Apple Intelligence settings or download a separate model.
+| Data | Location / behavior |
+| --- | --- |
+| Last 50 finalized transcripts and available text variants | `~/Library/Application Support/Yada/RecentTranscripts.json` |
+| Text mode and explicit terminology rules | `~/Library/Application Support/Yada/CleanupSettings.json` |
+| Shortcut and speech-language preferences | macOS application preferences |
+| Destination field text | Read temporarily for insertion checks; not logged or persisted |
 
-Model output can change meaning even when numbers match. A changed-number warning is only a review aid; it is not an accuracy guarantee. Live model quality is not yet verified on this Mac. Keep code, numbers, names, negations and commitments under review. The model is instructed to treat dictated instructions as text, with no tools or execution authority.
+Transcript files use owner-only permissions. Local storage is not application-encrypted, and external backup software may copy it. Existing history loads without a destructive migration; unreadable files are not silently overwritten.
 
-History retains raw, cleaned and formatted versions when present, plus cleanup version/style. Existing history entries load as raw-only records without a destructive migration. **Recent transcripts** lets you view and copy each available version. Terminology and mode are stored locally in `~/Library/Application Support/Yada/CleanupSettings.json`; they are not learned from other applications. Settings errors are visible and corrupt files are not silently overwritten.
+**Clear** removes the current preview. **Recent transcripts → Delete / Clear history** removes saved entries. Cancelling recording discards the active recording; cancelling formatting preserves the already-finalized transcript. Deleting Yada’s copy cannot recall text already copied, inserted or backed up elsewhere.
 
-See [cleanup and formatting acceptance](docs/mvp3-acceptance.md) for measured results and remaining tests. Apple's [Foundation Models documentation](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel) identifies this model as the on-device model powering Apple Intelligence.
+Explicit copy actions and Microsoft-app paste use the clipboard’s `currentHostOnly` option. Local clipboard managers may still read or sync that text. Clearing a preview does not clear the clipboard.
+
+## Verification and limitations
+
+Run the regression suite from the repository root:
+
+```sh
+xcodebuild -project Yada.xcodeproj -scheme Yada \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test
+```
+
+**Recorded result, September 6, 2026:** 41 tests passed with zero failures. Coverage includes transcript finalization, cancellation, insertion eligibility, history persistence and compatibility, cleanup rules, model failure/deadline handling, and reviewed insertion. The timeout regression deliberately takes 30 seconds.
+
+Tests use synthetic inputs. They do not establish real microphone quality, offline behavior, application compatibility or model fidelity. Native UI automation was unavailable during the latest formatting checks, and Apple Intelligence was disabled on the development Mac, so interactive UI and live model evaluation remain pending.
+
+A Debug-only `--ui-preview` driver uses synthetic recognition/formatting, in-memory history/settings and no registered global shortcut. Use the isolated bundle procedure in the [verification skill](.agents/skills/verify-project/SKILL.md); do not use private transcripts as test fixtures.
+
+| Evidence | Contents |
+| --- | --- |
+| [Dictation acceptance](docs/mvp1-acceptance.md) | Speech lifecycle and physical audio checks |
+| [Insertion acceptance](docs/mvp2-acceptance.md) | Destination guards and application test matrix |
+| [Cleanup and formatting acceptance](docs/mvp3-acceptance.md) | Transformation, model and review checks |
+
+## Development and roadmap
+
+Yada uses Swift 6, SwiftUI/AppKit, AVAudioEngine, SpeechAnalyzer/SpeechTranscriber and Foundation Models. Its only third-party package is [KeyboardShortcuts 3.0.1](https://github.com/sindresorhus/KeyboardShortcuts/tree/3.0.1), licensed under MIT and pinned through Swift Package Manager.
+
+| Directory | Responsibility |
+| --- | --- |
+| `Yada/App/` | Windows, menu bar, recording pill and controls |
+| `Yada/Audio/` | Microphone capture and conversion |
+| `Yada/Recognition/` | Apple speech recognition and language setup |
+| `Yada/Dictation/` | Session lifecycle and local history |
+| `Yada/Delivery/` | Active-field checks and insertion |
+| `Yada/Text/` | Cleanup, terminology and local formatting |
+| `YadaTests/` | Synthetic regression tests |
+
+The next priority is physical acceptance of everyday dictation and reviewed formatting. Packaging, meeting capture, speaker labels and grounded meeting notes follow as separate steps.
+
+- [Build plan](plan.md): ordered work and instructions for resuming testing.
+- [Product and technical specification](Yada_Product_and_Technical_Spec.md): design decisions and future scope.
+- [First-build prompt](Yada_First_Build_Prompt.md): historical starting requirements.
+- [Apple SpeechTranscriber](https://developer.apple.com/documentation/speech/speechtranscriber) and [SystemLanguageModel](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel): platform API references.
