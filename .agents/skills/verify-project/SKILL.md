@@ -40,3 +40,11 @@ Only the user grants Accessibility permission. Never alter privacy settings. Use
 Version 0.1.0 regression: verify key-down start/stop using the same shortcut handler, including setup refresh while recording. Outlook/Teams use a process-targeted paste with current-host-only clipboard text retained afterward; native insertion keeps the clipboard unchanged. Tests cover route selection, not physical delivery. Check both paths against docs/mvp2-acceptance.md without sending email/chat or reading private messages.
 
 Field diagnostics follow-on: the same insertion tests exercise production eligibility assessment for secure, disabled, non-text, unsupported native and eligible Microsoft fields. Verify preview reasons with synthetic fields only. No destination contents or field snapshots should be added to diagnostic logs or history.
+
+## Cleanup and formatting
+
+Read docs/mvp3-acceptance.md. The normal suite includes deterministic cleanup/terminology, Raw bypass, history schema compatibility, model failure/cancellation/deadline, and reviewed insertion tests. Fakes test the controller, not model quality. The timeout regression deliberately takes 30 seconds. Never infer semantic quality from passing deterministic tests.
+
+The isolated `--ui-preview` bundle uses synthetic formatting as well as synthetic recognition, in-memory settings/history and no global shortcut. Exercise mode/terminology controls, formatting progress and cancellation, raw/clean/formatted comparisons, history versions and the pending-insertion controls. Do not use real user content. If native UI tools fail, record the blocker instead of claiming a visual pass.
+
+Read `SystemLanguageModel.default.availability` without changing settings. The user enables Apple Intelligence and completes any Apple-managed model setup. Use only the synthetic semantic corpus in docs/mvp3-acceptance.md for model evaluation. No cloud inference, model feedback submission, transcript logging or hidden download is part of verification. Reviewed insertion captures a fresh field; never auto-submit an email/chat while testing.

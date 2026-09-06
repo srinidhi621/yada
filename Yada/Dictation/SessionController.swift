@@ -12,7 +12,7 @@ protocol RecognitionSession: AnyObject {
 
 enum SessionState: String {
     case idle = "Idle", preparing = "Preparing", recording = "Recording"
-    case delivering = "Inserting", outcomeUnknown = "Check insertion"
+    case formatting = "Formatting", delivering = "Inserting", outcomeUnknown = "Check insertion"
     case finalizing = "Finalizing", ready = "Ready", cancelled = "Cancelled", failure = "Could not finish"
 }
 
@@ -30,23 +30,45 @@ final class SessionController {
     private var insertionTarget: (any InsertionTarget)?
     private var previewReason: String?
     let history: RecentTranscripts
+    let cleanup: CleanupSettings
+    private let formatter: any TextFormatting
+    private(set) var outputText = ""
+    private(set) var cleanedText = ""
+    private(set) var formattedText: String?
+    private(set) var reviewWarning = ""
+    private(set) var readyToInsert = false
+    private(set) var modelStatus = ""
+    private(set) var formattingMS: Double?
+    private var savedID: UUID?
+    private var activeMode: TextMode = .raw
+    private var activeReplacements: [TermReplacement] = []
+    private var activeLocale = Locale.current
+    private var formatTask: Task<Void, Never>?
+    private var formatTimeout: Task<Void, Never>?
+    var canFormat: Bool { state == .ready && !outputText.isEmpty && !readyToInsert }
+
     private var generation = UUID()
     private var session: (any RecognitionSession)?
     private var operation: Task<Void, Never>?
     private let makeSession: () -> any RecognitionSession
-    var busy: Bool { [.preparing, .recording, .finalizing, .delivering].contains(state) || cleaningUp }
+    var busy: Bool { [.preparing, .recording, .finalizing, .formatting, .delivering].contains(state) || cleaningUp }
     var canCopy: Bool { [.ready, .outcomeUnknown].contains(state) && !transcript.finalText.isEmpty }
     var canCancel: Bool { [.preparing, .recording, .finalizing].contains(state) && !cleaningUp }
 
-    init(history: RecentTranscripts = RecentTranscripts(), makeSession: @escaping () -> any RecognitionSession = { AppleSpeechSession() }) {
+    init(history: RecentTranscripts = RecentTranscripts(), cleanup: CleanupSettings = CleanupSettings(), formatter: any TextFormatting = LocalFormatter(), makeSession: @escaping () -> any RecognitionSession = { AppleSpeechSession() }) {
         self.makeSession = makeSession
         self.history = history
+        self.cleanup = cleanup
+        self.formatter = formatter
+        modelStatus = formatter.availabilityMessage
     }
 
     // A running session always gets its stop key, even if setup is refreshing.
     func handleShortcut(locale: Locale, setupBusy: Bool, capture: () -> InsertionPreparation) {
         if busy {
             toggle(locale: locale)
+        } else if readyToInsert {
+            deliverReviewed(capture())
         } else if !setupBusy {
             toggle(locale: locale, insertion: capture())
         }
@@ -57,7 +79,7 @@ final class SessionController {
         switch state {
         case .preparing: cancel()
         case .recording: stop()
-        case .finalizing, .delivering: break
+        case .finalizing, .formatting, .delivering: break
         default: start(locale: locale, insertion: insertion)
         }
     }
@@ -79,6 +101,10 @@ final class SessionController {
         let id = UUID()
         generation = id
         transcript = Transcript()
+        resetTextVersions()
+        activeMode = cleanup.mode
+        activeReplacements = cleanup.replacements
+        activeLocale = locale
         readinessMS = nil
         finalizationMS = nil
         level = 0
@@ -123,13 +149,22 @@ final class SessionController {
                 try await active.stop()
                 guard generation == id, state == .finalizing else { return }
                 transcript.finish()
-                history.append(transcript.finalText)
+                cleanedText = activeMode == .raw ? transcript.finalText : TextCleanup.apply(transcript.finalText, replacements: activeReplacements)
+                outputText = cleanedText
+                savedID = history.append(outputText, rawText: transcript.finalText, cleanedText: activeMode == .raw ? nil : cleanedText,
+                                         transformVersion: activeMode == .raw ? nil : TextCleanup.version)
                 finalizationMS = Self.milliseconds(since: stopped)
                 session = nil
-                if let target = insertionTarget, !transcript.finalText.isEmpty {
+                if activeMode.requiresReview, !outputText.isEmpty {
+                    insertionTarget = nil
+                    state = .ready
+                    format(style: activeMode)
+                    return
+                }
+                if let target = insertionTarget, !outputText.isEmpty {
                     state = .delivering
                     message = "Inserting into your text field…"
-                    let result = await target.insert(transcript.finalText)
+                    let result = await target.insert(outputText)
                     insertionTarget = nil
                     switch result {
                     case .inserted:
@@ -155,11 +190,11 @@ final class SessionController {
         }
     }
 
-    func cancel() { end(state: .cancelled, message: "Cancelled. Audio and text discarded.") }
+    func cancel() { if state == .formatting { cancelFormatting(); return }; end(state: .cancelled, message: "Cancelled. Audio and text discarded.") }
     func fail(_ message: String) { end(state: .failure, message: message) }
 
     private func end(state: SessionState, message: String) {
-        guard !cleaningUp, self.state != .delivering else { return }
+        guard !cleaningUp, self.state != .delivering, self.state != .formatting else { return }
         insertionTarget = nil
         generation = UUID()
         operation?.cancel()
@@ -169,6 +204,7 @@ final class SessionController {
         self.state = state
         self.message = message
         transcript = Transcript()
+        resetTextVersions()
         level = 0
         cleaningUp = active != nil
         operation = Task {
@@ -185,6 +221,7 @@ final class SessionController {
         needsAccessibility = false
         shouldPresentPreview = true
         transcript = Transcript()
+        resetTextVersions()
         state = .idle
         message = "Current-session text cleared."
     }
@@ -197,12 +234,112 @@ final class SessionController {
         state = .idle
         generation = UUID()
         transcript = Transcript()
-        transcript.receive(TranscriptSegment(start: 0, end: 0, text: entry.text, isFinal: true))
+        resetTextVersions()
+        outputText = entry.text
+        cleanedText = entry.cleanedText ?? entry.rawText ?? entry.text
+        formattedText = entry.formattedText
+        if let formattedText { reviewWarning = FormatReview.warning(original: entry.rawText ?? entry.text, formatted: formattedText) }
+        savedID = entry.id
+        transcript.receive(TranscriptSegment(start: 0, end: 0, text: entry.rawText ?? entry.text, isFinal: true))
         transcript.finish()
         readinessMS = nil
         finalizationMS = nil
         state = .ready
         message = "Saved transcript. Review or copy it; start recording for a new one."
+    }
+
+    func refreshModelStatus() { modelStatus = formatter.availabilityMessage }
+
+    private func resetTextVersions() {
+        outputText = ""; cleanedText = ""; formattedText = nil; reviewWarning = ""
+        readyToInsert = false; savedID = nil; formattingMS = nil
+    }
+
+    func format(style: TextMode) {
+        guard canFormat, style.requiresReview else { return }
+        readyToInsert = false
+        formattedText = nil
+        reviewWarning = ""
+        shouldPresentPreview = true
+        state = .formatting
+        message = "Formatting on this Mac. Your original text is preserved."
+        refreshModelStatus()
+        let id = generation
+        let source = cleanedText
+        let started = ContinuousClock.now
+        // Separate timeout task releases the UI even if the framework is slow to cancel.
+        formatTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            guard let self, self.generation == id, self.state == .formatting else { return }
+            self.cancelFormatting(message: "Formatting timed out. Your original text is preserved.")
+        }
+        formatTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await formatter.format(source, style: style, locale: activeLocale)
+                guard generation == id, state == .formatting, !Task.isCancelled else { return }
+                guard !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw YadaError("The model returned no text. Your original text is preserved.") }
+                formattedText = result
+                reviewWarning = FormatReview.warning(original: transcript.finalText, formatted: result)
+                formattingMS = Self.milliseconds(since: started)
+                if let savedID { history.saveFormatted(id: savedID, text: result, style: style) }
+                message = "Review the formatted text against Raw before using it."
+            } catch {
+                guard generation == id, state == .formatting, !Task.isCancelled else { return }
+                message = (error as? YadaError)?.message ?? "Local formatting could not finish. The model may have refused the text or exceeded its context limit. Your original text is preserved."
+            }
+            formatTimeout?.cancel(); formatTimeout = nil
+            formatTask = nil
+            state = .ready
+        }
+    }
+
+    func cancelFormatting(message: String = "Formatting cancelled. Your original text is preserved.") {
+        guard state == .formatting else { return }
+        generation = UUID()
+        formatTask?.cancel(); formatTask = nil
+        formatTimeout?.cancel(); formatTimeout = nil
+        self.message = message
+        state = .ready
+    }
+
+    func prepareReviewedInsertion(useFormatted: Bool) {
+        guard state == .ready else { return }
+        if useFormatted {
+            guard let formattedText else { return }
+            outputText = formattedText
+        } else {
+            outputText = cleanedText
+        }
+        readyToInsert = !outputText.isEmpty
+        message = "Click the destination text field, then press your shortcut once to insert this reviewed text. No recording will start."
+    }
+
+    func discardReviewedInsertion() { readyToInsert = false; message = "Insertion cancelled. Your text remains available here." }
+
+    private func deliverReviewed(_ preparation: InsertionPreparation) {
+        readyToInsert = false
+        needsAccessibility = false
+        switch preparation {
+        case .needsAccessibility:
+            needsAccessibility = true
+            message = "Allow Yada in macOS Accessibility, then choose Use reviewed text again."
+            shouldPresentPreview = true
+            state = .idle; state = .ready
+        case .preview(let reason):
+            message = reason ?? "Click an editable field outside Yada, then choose Use reviewed text again."
+            state = .idle; state = .ready
+        case .target(let target):
+            state = .delivering
+            operation = Task {
+                let result = await target.insert(outputText)
+                switch result {
+                case .inserted: shouldPresentPreview = false; message = "Inserted reviewed text."; state = .ready
+                case .notInserted(let reason): shouldPresentPreview = true; message = reason; state = .ready
+                case .uncertain(let reason): shouldPresentPreview = true; message = reason; state = .outcomeUnknown
+                }
+            }
+        }
     }
 
     static func userMessage(_ error: Error) -> String {

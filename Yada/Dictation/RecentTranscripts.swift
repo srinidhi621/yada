@@ -5,6 +5,18 @@ struct SavedTranscript: Codable, Identifiable, Equatable {
     let id: UUID
     let createdAt: Date
     let text: String
+    let rawText: String?
+    let cleanedText: String?
+    let formattedText: String?
+    let transformVersion: String?
+    let formattingStyle: String?
+
+    init(id: UUID, createdAt: Date, text: String, rawText: String? = nil, cleanedText: String? = nil,
+         formattedText: String? = nil, transformVersion: String? = nil, formattingStyle: String? = nil) {
+        self.id = id; self.createdAt = createdAt; self.text = text
+        self.rawText = rawText; self.cleanedText = cleanedText; self.formattedText = formattedText
+        self.transformVersion = transformVersion; self.formattingStyle = formattingStyle
+    }
 }
 
 @MainActor @Observable
@@ -30,10 +42,22 @@ final class RecentTranscripts {
         }
     }
 
-    func append(_ text: String) {
-        guard !text.isEmpty, !loadFailed else { return }
-        let entry = SavedTranscript(id: UUID(), createdAt: .now, text: text)
-        save(Array(([entry] + entries).prefix(Self.limit)))
+    @discardableResult
+    func append(_ text: String, rawText: String? = nil, cleanedText: String? = nil, transformVersion: String? = nil) -> UUID? {
+        guard !text.isEmpty, !loadFailed else { return nil }
+        let entry = SavedTranscript(id: UUID(), createdAt: .now, text: text, rawText: rawText,
+                                    cleanedText: cleanedText, transformVersion: transformVersion)
+        return save(Array(([entry] + entries).prefix(Self.limit))) ? entry.id : nil
+    }
+
+    func saveFormatted(id: UUID, text: String, style: TextMode) {
+        guard !loadFailed, let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        let old = entries[index]
+        var proposed = entries
+        proposed[index] = SavedTranscript(id: old.id, createdAt: old.createdAt, text: old.text,
+            rawText: old.rawText, cleanedText: old.cleanedText, formattedText: text,
+            transformVersion: old.transformVersion, formattingStyle: style.rawValue)
+        save(proposed)
     }
 
     func delete(id: UUID) { guard !loadFailed else { return }; save(entries.filter { $0.id != id }) }

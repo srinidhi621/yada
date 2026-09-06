@@ -6,7 +6,7 @@ Updated: September 6, 2026. This is the delivery checklist; `Yada_Product_and_Te
 
 Version 0.1.0 is on `main` (initial release commit `a75d04d`). It includes local Apple transcription, a configurable start/stop shortcut (currently Control+Y), Dock and menu-bar access, a small recording pill, local history of 50 transcripts, and automatic insertion. Native accessible fields use direct selected-text writes. Installed Outlook and Teams use a guarded paste path that leaves the transcript on the local clipboard. No message is sent automatically.
 
-The current build passes 29 automated tests. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
+The published reliability build passes 29 automated tests. The local cleanup/formatting implementation and its additional evidence are recorded in docs/mvp3-acceptance.md. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
 
 ## Ground rules
 
@@ -43,7 +43,7 @@ Files: `Yada/Delivery/ActiveFieldInsertion.swift`, controller/UI only where need
 
 Gate: no wrong-target insertion, duplicate retry, unintended submission or command execution; honest recovery for unsupported fields. Physical tests remain pending until actually run. Steps 1.1 and 1.2 are implemented; Step 1.3 passes all 29 tests. See the local follow-on section in docs/mvp2-acceptance.md. The user has authorized publishing these implementation changes to main. Steps 1.4 and 1.5 still require physical acceptance.
 
-### 2. Add conservative, optional cleanup
+### 2. Add conservative, optional cleanup: implemented locally, acceptance in progress
 
 1. Create one deterministic transformation path after finalization and before delivery, with Raw as the default/bypass.
 2. Start with whitespace normalization. Add disfluency rules only with positive and counterexample fixtures; do not broadly delete words such as “like” or “well.”
@@ -51,15 +51,19 @@ Gate: no wrong-target insertion, duplicate retry, unintended submission or comma
 4. Preserve raw and cleaned text, transformation version, and access to the original in history. Migrate existing history without data loss.
 5. Add the smallest Raw/Clean control and test it through the same dictation lifecycle.
 
+Current implementation: Raw/Clean mode, whitespace and exact terminology rules, preserved history variants, and settings validation. No deterministic filler deletion is enabled. See docs/mvp3-acceptance.md.
+
 Gate: numbers, negation, dates, names, quotations and code survive; already-clean text stays substantively unchanged; cancellation and insertion checks still pass. No model download is needed.
 
-### 3. Offer local formatting with review
+### 3. Offer local formatting with review: implemented locally, live model test pending
 
 1. Check the installed Apple on-device model's availability before adding inference; record any user setup needed.
 2. Implement one bounded model pass for faithful prose, bullets or email draft. Give it no tools or external access.
 3. Preserve raw/cleaned/formatted versions and start with review before insertion.
 4. Handle timeout, unavailable model, refusal and invalid output by retaining faithful text with a clear reason.
 5. Evaluate synthetic fixtures for meaning, numbers, commitments and instruction-like transcript text. Measure latency locally.
+
+Current implementation: explicit Apple on-device model, three review styles, cancellation/deadline, preserved originals, and one-shot reviewed insertion. This Mac reports Apple Intelligence disabled. Model semantic quality and interactive UI acceptance are pending; unit tests cannot close those gates.
 
 Gate: no unapproved factual or commitment changes in the critical evaluation set. Compare one alternative local model only if Apple fails the measured workload; review disk, memory and download requirements first.
 

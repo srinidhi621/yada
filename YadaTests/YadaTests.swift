@@ -484,3 +484,199 @@ final class InsertionTests: XCTestCase {
     }
 
 }
+
+final class CleanupTests: XCTestCase {
+    func testSpacingKeepsMeaningQuotesCodeAndLineBreaks() {
+        let raw = "I  do not agree.\nPay  1,200 on  12/09. Say \"two  spaces\" and `let  x = 2`.\n    code  stays"
+        XCTAssertEqual(TextCleanup.apply(raw, replacements: []), "I do not agree.\nPay 1,200 on 12/09. Say \"two  spaces\" and `let  x = 2`.\n    code  stays")
+        let clean = "Well, I actually like this. Tuesday, sorry, Thursday."
+        XCTAssertEqual(TextCleanup.apply(clean, replacements: []), clean)
+    }
+    func testTermsRespectCaseBoundariesQuotesAndDoNotCascade() {
+        let terms = [TermReplacement(source: "yada", replacement: "Yada"), TermReplacement(source: "Yada", replacement: "Wrong"), TermReplacement(source: "cafe", replacement: "café")]
+        XCTAssertEqual(TextCleanup.apply("yada yadax _yada YADA cafe \"yada\" `yada`", replacements: terms), "Yada yadax _yada YADA café \"yada\" `yada`")
+    }
+    func testModelNumberWarningIsNotAnEquivalenceClaim() {
+        XCTAssertTrue(FormatReview.warning(original: "Pay 120", formatted: "Pay 200").contains("Numbers"))
+        XCTAssertTrue(FormatReview.warning(original: "Do not pay 120", formatted: "Pay 120").contains("meaning"))
+    }
+}
+
+@MainActor
+private final class FakeFormatter: TextFormatting {
+    var availabilityMessage = "Synthetic formatter"
+    var output = "Formatted words."
+    var failure: Error?
+    var calls: [String] = []
+    var hold = false
+    var gate: CheckedContinuation<Void, Never>?
+    func format(_ text: String, style: TextMode, locale: Locale) async throws -> String {
+        calls.append(text)
+        if hold { await withCheckedContinuation { gate = $0 } }
+        if let failure { throw failure }
+        return output
+    }
+}
+
+@MainActor
+final class TextProcessingTests: XCTestCase {
+    private func waitUntil(_ condition: @escaping @MainActor () -> Bool) async {
+        for _ in 0..<2000 { if condition() { return }; await Task.yield() }
+        XCTFail("Expected text processing transition")
+    }
+    func testCleanIsAppliedBeforeInsertionAndRawIsSaved() async {
+        let settings = CleanupSettings(); settings.setMode(.clean)
+        settings.add(source: "Final", replacement: "Corrected")
+        let target = FakeInsertionTarget()
+        let controller = SessionController(cleanup: settings, formatter: FakeFormatter()) { FakeRecognition() }
+        controller.toggle(locale: Locale(identifier: "en-US"), insertion: .target(target))
+        await waitUntil { controller.state == .recording }
+        // Mid-session changes cannot alter this session's corrections.
+        settings.delete("Final")
+        controller.stop()
+        await waitUntil { controller.state == .ready }
+        XCTAssertEqual(target.calls, ["Corrected words."])
+        XCTAssertEqual(controller.transcript.finalText, "Final words.")
+        XCTAssertEqual(controller.history.entries.first?.rawText, "Final words.")
+        XCTAssertEqual(controller.history.entries.first?.cleanedText, "Corrected words.")
+        XCTAssertEqual(controller.history.entries.first?.transformVersion, TextCleanup.version)
+    }
+    func testRawBypassesReplacementsAndModel() async {
+        let settings = CleanupSettings(); settings.add(source: "Final", replacement: "Changed")
+        let formatter = FakeFormatter()
+        let controller = SessionController(cleanup: settings, formatter: formatter) { FakeRecognition() }
+        controller.toggle(locale: Locale(identifier: "en-US"))
+        await waitUntil { controller.state == .recording }; controller.stop()
+        await waitUntil { controller.state == .ready }
+        XCTAssertEqual(controller.outputText, "Final words.")
+        XCTAssertTrue(formatter.calls.isEmpty)
+    }
+    func testFormattingRequiresReviewThenFreshTargetAndNeverRecordsOnInsert() async {
+        let settings = CleanupSettings(); settings.setMode(.bullets)
+        let formatter = FakeFormatter()
+        let originalTarget = FakeInsertionTarget(), reviewedTarget = FakeInsertionTarget()
+        var sessions = 0
+        let controller = SessionController(cleanup: settings, formatter: formatter) { sessions += 1; return FakeRecognition() }
+        controller.toggle(locale: Locale(identifier: "en-US"), insertion: .target(originalTarget))
+        await waitUntil { controller.state == .recording }; controller.stop()
+        await waitUntil { controller.formattedText != nil && controller.state == .ready }
+        XCTAssertTrue(originalTarget.calls.isEmpty)
+        XCTAssertEqual(controller.outputText, "Final words.")
+        XCTAssertEqual(controller.history.entries.first?.formattedText, formatter.output)
+        controller.prepareReviewedInsertion(useFormatted: true)
+        controller.handleShortcut(locale: Locale(identifier: "en-US"), setupBusy: false, capture: { .target(reviewedTarget) })
+        await waitUntil { controller.state == .ready }
+        XCTAssertEqual(reviewedTarget.calls, [formatter.output])
+        XCTAssertEqual(sessions, 1)
+        XCTAssertFalse(controller.readyToInsert)
+        controller.prepareReviewedInsertion(useFormatted: false)
+        XCTAssertEqual(controller.outputText, "Final words.")
+    }
+    func testModelFailureKeepsRawAndDoesNotAutoInsert() async {
+        let settings = CleanupSettings(); settings.setMode(.email)
+        let formatter = FakeFormatter(); formatter.failure = YadaError("Model unavailable")
+        let target = FakeInsertionTarget()
+        let controller = SessionController(cleanup: settings, formatter: formatter) { FakeRecognition() }
+        controller.toggle(locale: Locale(identifier: "en-US"), insertion: .target(target))
+        await waitUntil { controller.state == .recording }; controller.stop()
+        await waitUntil { controller.message == "Model unavailable" }
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertEqual(controller.outputText, "Final words.")
+        XCTAssertNil(controller.formattedText)
+        XCTAssertTrue(target.calls.isEmpty)
+    }
+    func testCancelledModelCannotOverwriteNewSession() async {
+        let settings = CleanupSettings(); settings.setMode(.prose)
+        let formatter = FakeFormatter(); formatter.hold = true
+        let controller = SessionController(cleanup: settings, formatter: formatter) { FakeRecognition() }
+        controller.toggle(locale: Locale(identifier: "en-US"))
+        await waitUntil { controller.state == .recording }; controller.stop()
+        await waitUntil { formatter.gate != nil }
+        controller.cancelFormatting()
+        XCTAssertEqual(controller.outputText, "Final words.")
+        settings.setMode(.raw)
+        controller.toggle(locale: Locale(identifier: "en-US"))
+        await waitUntil { controller.state == .recording }
+        formatter.gate?.resume(); formatter.gate = nil
+        await Task.yield()
+        XCTAssertNil(controller.formattedText)
+        XCTAssertEqual(controller.state, .recording)
+        controller.cancel()
+        await waitUntil { !controller.cleaningUp }
+    }
+    func testFormattingTimeoutKeepsTextAndIgnoresLateResult() async throws {
+        let settings = CleanupSettings(); settings.setMode(.prose)
+        let formatter = FakeFormatter(); formatter.hold = true
+        let controller = SessionController(cleanup: settings, formatter: formatter) { FakeRecognition() }
+        controller.toggle(locale: .current)
+        await waitUntil { controller.state == .recording }; controller.stop()
+        await waitUntil { formatter.gate != nil }
+        for _ in 0..<350 {
+            if controller.state == .ready { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertTrue(controller.message.contains("timed out"))
+        XCTAssertEqual(controller.outputText, "Final words.")
+        formatter.gate?.resume(); formatter.gate = nil
+        await Task.yield()
+        XCTAssertNil(controller.formattedText)
+    }
+
+    func testReviewedInsertionPermissionFailureCanBeRetried() async {
+        let controller = SessionController(formatter: FakeFormatter()) { FakeRecognition() }
+        let entry = SavedTranscript(id: UUID(), createdAt: .now, text: "Pay 10", rawText: "Pay 10", formattedText: "Pay 20")
+        controller.showSaved(entry)
+        XCTAssertTrue(controller.reviewWarning.contains("Numbers"))
+        controller.prepareReviewedInsertion(useFormatted: true)
+        controller.handleShortcut(locale: .current, setupBusy: false, capture: { .needsAccessibility })
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertTrue(controller.canCopy)
+        XCTAssertTrue(controller.needsAccessibility)
+        controller.prepareReviewedInsertion(useFormatted: true)
+        XCTAssertTrue(controller.readyToInsert)
+        let target = FakeInsertionTarget()
+        controller.handleShortcut(locale: .current, setupBusy: false, capture: { .target(target) })
+        await waitUntil { controller.state == .ready }
+        XCTAssertEqual(target.calls, ["Pay 20"])
+        XCTAssertFalse(controller.needsAccessibility)
+    }
+
+    func testLegacyHistoryAndVariantsRoundTripWithoutLosingOriginal() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "history.json")
+        let id = UUID()
+        let legacy = "[{\"id\":\"\(id.uuidString)\",\"createdAt\":0,\"text\":\"Legacy words\"}]"
+        try Data(legacy.utf8).write(to: url)
+        let store = RecentTranscripts(fileURL: url)
+        XCTAssertEqual(store.entries.first?.text, "Legacy words")
+        let added = try XCTUnwrap(store.append("Cleaned", rawText: "Raw", cleanedText: "Cleaned", transformVersion: TextCleanup.version))
+        store.saveFormatted(id: added, text: "Formatted", style: .prose)
+        let loaded = RecentTranscripts(fileURL: url)
+        XCTAssertEqual(loaded.entries.count, 2)
+        XCTAssertEqual(loaded.entries.first?.rawText, "Raw")
+        XCTAssertEqual(loaded.entries.first?.formattedText, "Formatted")
+        XCTAssertEqual(loaded.entries.last?.text, "Legacy words")
+    }
+    func testSettingsPersistAndCorruptFileIsNotOverwritten() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "settings.json")
+        let settings = CleanupSettings(fileURL: url)
+        settings.add(source: "acme", replacement: "Acme")
+        settings.setMode(.clean)
+        let loaded = CleanupSettings(fileURL: url)
+        XCTAssertEqual(loaded.mode, .clean)
+        XCTAssertEqual(loaded.replacements.count, 1)
+        loaded.add(source: "acme", replacement: "Duplicate")
+        XCTAssertNotNil(loaded.errorMessage)
+        let corrupt = Data("not JSON".utf8)
+        try corrupt.write(to: url)
+        let broken = CleanupSettings(fileURL: url)
+        broken.setMode(.email)
+        XCTAssertEqual(broken.mode, .raw)
+        XCTAssertEqual(try Data(contentsOf: url), corrupt)
+    }
+}

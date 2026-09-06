@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor [weak self] in self?.observeState() }
         }
         pill.update(controller: controller)
-        if (state == .ready && controller.shouldPresentPreview) || state == .outcomeUnknown || state == .failure { showWindow?() }
+        if state == .formatting || (state == .ready && controller.shouldPresentPreview) || state == .outcomeUnknown || state == .failure { showWindow?() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -106,7 +106,7 @@ struct MenuContent: View {
         Button("Show Yada") { openWindow(id: "yada"); NSApp.activate() }
         Button(controller.state == .recording ? "Stop and finalize" : "Start recording") {
             controller.toggle(locale: language.locale)
-        }.disabled(language.checking || language.downloading || controller.cleaningUp || [.finalizing, .delivering].contains(controller.state))
+        }.disabled(language.checking || language.downloading || controller.cleaningUp || [.finalizing, .formatting, .delivering].contains(controller.state))
         if controller.canCancel { Button("Cancel recording") { controller.cancel() } }
         Divider()
         Menu("Recent transcripts") {
@@ -127,7 +127,10 @@ struct ContentView: View {
     @Bindable var controller: SessionController
     @Bindable var language: LanguageSetup
     @State private var copyStatus = ""
+    @State private var showTerms = false
+    @State private var formatStyle: TextMode = .prose
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 18) {
             if UIValidation.isEnabled { Text("UI preview · synthetic audio levels · no microphone").font(.caption).foregroundStyle(.orange) }
             HStack {
@@ -149,8 +152,16 @@ struct ContentView: View {
                                 return .disallow(reason: "Keep Fn available for Wispr Flow. Choose another chord.")
                             }
                             return .allow
-                        }
+                        }.disabled(UIValidation.isEnabled)
                     Text("Press your shortcut to start. Press it again to stop and insert at the cursor. Wispr Flow keeps Fn.").font(.caption).foregroundStyle(.secondary)
+                    Picker("Text mode", selection: Binding(get: { controller.cleanup.mode }, set: { controller.cleanup.setMode($0) })) {
+                        ForEach(TextMode.allCases) { mode in Text(mode.rawValue + (mode.requiresReview ? " · review" : "")).tag(mode) }
+                    }
+                    HStack {
+                        Text("Clean fixes spacing and your saved terms. Prose, Bullets and Email use Apple's local model and open for review.").font(.caption).foregroundStyle(.secondary)
+                        Button("Terminology…") { showTerms = true }
+                    }
+                    if let error = controller.cleanup.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }
                     Picker("Speech language", selection: $language.selectedID) {
                         if !language.locales.contains(where: { $0.identifier == language.selectedID }) {
                             Text(language.selectedID).tag(language.selectedID)
@@ -160,14 +171,14 @@ struct ContentView: View {
                         }
                     }
                     HStack {
-                        Button("Check language") { Task { await language.check() } }
+                        Button("Check language") { Task { await language.check() } }.disabled(UIValidation.isEnabled)
                         Button("Download language") { Task { await language.download() } }
-                            .disabled(language.installed || language.locales.isEmpty)
+                            .disabled(language.installed || language.locales.isEmpty || UIValidation.isEnabled)
                     }
                     Text(language.status).font(.caption).fixedSize(horizontal: false, vertical: true)
                     if language.downloading { ProgressView(value: language.progress).accessibilityLabel("Language download progress") }
                 }.padding(6)
-            }.disabled(controller.busy || language.checking || language.downloading || UIValidation.isEnabled)
+            }.disabled(controller.busy || language.checking || language.downloading)
             Text(controller.message).fixedSize(horizontal: false, vertical: true)
             if controller.needsAccessibility {
                 Button("Allow text insertion") { ActiveFieldInsertion.requestAccessibility() }
@@ -175,7 +186,7 @@ struct ContentView: View {
             if let error = controller.history.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
-            if controller.state == .preparing || controller.state == .finalizing || controller.state == .delivering { ProgressView().controlSize(.small) }
+            if controller.state == .preparing || controller.state == .finalizing || controller.state == .formatting || controller.state == .delivering { ProgressView().controlSize(.small) }
             if controller.state == .recording {
                 ProgressView(value: Double(controller.level)).tint(.red).accessibilityLabel("Microphone level")
             }
@@ -185,13 +196,13 @@ struct ContentView: View {
                     controller.toggle(locale: language.locale)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(language.checking || language.downloading || controller.cleaningUp || [.preparing, .finalizing, .delivering].contains(controller.state))
+                .disabled(language.checking || language.downloading || controller.cleaningUp || [.preparing, .finalizing, .formatting, .delivering].contains(controller.state))
                 if controller.canCancel { Button("Cancel") { controller.cancel() }.disabled(controller.cleaningUp) }
                 Spacer()
             }
-            GroupBox(controller.state == .ready ? "Final transcript" : "Preview · may change") {
+            GroupBox(controller.canCopy ? "Final text" : "Preview · may change") {
                 ScrollView {
-                    Text(controller.transcript.preview.isEmpty ? "Your words will appear here." : controller.transcript.preview)
+                    Text(controller.canCopy ? controller.outputText : (controller.transcript.preview.isEmpty ? "Your words will appear here." : controller.transcript.preview))
                         .foregroundStyle(controller.transcript.preview.isEmpty ? .secondary : .primary)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding(8)
@@ -199,23 +210,65 @@ struct ContentView: View {
             }
             HStack {
                 Button("Copy") {
-                    copyStatus = copyLocally(controller.transcript.finalText)
+                    copyStatus = copyLocally(controller.outputText)
                 }.disabled(!controller.canCopy)
                 Button("Clear") { controller.clear(); copyStatus = "" }.disabled(controller.busy)
                 Text(copyStatus).font(.caption)
                 Spacer()
             }
-            Text("Audio is never saved. The last 50 finalized transcripts are saved locally; manage them in Recent transcripts. Text goes directly into supported fields. Copy is available when insertion cannot be verified. Local clipboard managers may still read or sync copied text. ASR may normalize speech; Yada adds no cleanup.")
+            if !controller.transcript.finalText.isEmpty && ![.preparing, .recording, .finalizing, .delivering].contains(controller.state) {
+                DisclosureGroup("Original and cleanup") {
+                    Text("Raw").font(.caption.bold())
+                    ScrollView { Text(controller.transcript.finalText).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 90)
+                    Button("Copy raw") { copyStatus = copyLocally(controller.transcript.finalText) }
+                    if controller.cleanedText != controller.transcript.finalText {
+                        Text("Cleaned").font(.caption.bold())
+                        Text(controller.cleanedText)
+                    }
+                }
+                GroupBox("Local formatting · review before insertion") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(controller.modelStatus).font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            Picker("Style", selection: $formatStyle) {
+                                ForEach(TextMode.allCases.filter(\.requiresReview)) { Text($0.rawValue).tag($0) }
+                            }
+                            Button("Format") { controller.format(style: formatStyle) }.disabled(!controller.canFormat)
+                            Button("Check model") { controller.refreshModelStatus() }
+                        }
+                        if controller.state == .formatting { Button("Cancel formatting") { controller.cancelFormatting() } }
+                        if let formatted = controller.formattedText {
+                            ScrollView { Text(formatted).frame(maxWidth: .infinity, alignment: .leading) }.frame(minHeight: 70, maxHeight: 150)
+                            Text(controller.reviewWarning).font(.caption).foregroundStyle(.orange)
+                            HStack {
+                                Button("Use reviewed text") { controller.prepareReviewedInsertion(useFormatted: true) }.disabled(controller.busy)
+                                Button("Copy formatted") { copyStatus = copyLocally(formatted) }.disabled(controller.busy)
+                            }
+                        }
+                        if controller.state == .ready && !controller.readyToInsert {
+                            Button("Use unformatted text") { controller.prepareReviewedInsertion(useFormatted: false) }
+                        }
+                        if controller.readyToInsert {
+                            Text("Return to your destination and press the shortcut once to insert. No recording starts.").font(.caption)
+                            Button("Cancel pending insertion") { controller.discardReviewedInsertion() }
+                        }
+                        if let ms = controller.formattingMS { Text("Formatting: \(Int(ms)) ms").font(.caption.monospacedDigit()) }
+                    }
+                }
+            }
+            Text("Audio is never saved. The last 50 finalized transcripts are saved locally; manage them in Recent transcripts. Text goes directly into supported fields. Copy is available when insertion cannot be verified. Local clipboard managers may still read or sync copied text. Raw preserves recognizer output. Clean uses your rules; model formatting always needs review.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let ready = controller.readinessMS {
                 Text("Capture readiness: \(Int(ready)) ms" + (controller.finalizationMS.map { " · Finalization: \(Int($0)) ms" } ?? ""))
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
         }
+        }
         .padding(24)
         .frame(minWidth: 500, minHeight: 600)
         .task { if !UIValidation.isEnabled { await language.check() } }
         .onChange(of: controller.state) { _, _ in copyStatus = "" }
+        .sheet(isPresented: $showTerms) { TerminologyView(settings: controller.cleanup) }
     }
 }
 
@@ -230,6 +283,7 @@ struct HistoryView: View {
     @State private var selectedID: UUID?
     @State private var copyStatus = ""
     @State private var confirmClear = false
+    @State private var version = "Saved"
     private var selected: SavedTranscript? { history.entries.first { $0.id == selectedID } }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -247,11 +301,17 @@ struct HistoryView: View {
                     }.tag(entry.id).padding(.vertical, 4)
                 }.frame(minHeight: 130)
                 if let selected {
-                    ScrollView { Text(selected.text).frame(maxWidth: .infinity, alignment: .leading).padding(12) }
+                    Picker("Version", selection: $version) {
+                        Text("Saved").tag("Saved")
+                        Text("Raw").tag("Raw")
+                        if selected.cleanedText != nil { Text("Cleaned").tag("Cleaned") }
+                        if selected.formattedText != nil { Text("Formatted").tag("Formatted") }
+                    }.pickerStyle(.segmented)
+                    ScrollView { Text(historyText(selected)).frame(maxWidth: .infinity, alignment: .leading).padding(12) }
                         .frame(minHeight: 100, maxHeight: 200)
                         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                     HStack {
-                        Button("Copy") { copyStatus = copyLocally(selected.text) }
+                        Button("Copy") { copyStatus = copyLocally(historyText(selected)) }
                         Button("Delete", role: .destructive) { history.delete(id: selected.id); selectedID = nil; copyStatus = "" }
                         Text(copyStatus).font(.caption)
                     }
@@ -265,11 +325,20 @@ struct HistoryView: View {
                     .disabled(history.entries.isEmpty && history.errorMessage == nil)
             }
         }.padding(24).frame(minWidth: 500, minHeight: 600)
-        .onChange(of: selectedID) { _, _ in copyStatus = "" }
+        .onChange(of: selectedID) { _, _ in copyStatus = ""; version = "Saved" }
         .confirmationDialog("Delete all saved transcripts?", isPresented: $confirmClear) {
             Button("Delete all", role: .destructive) { history.clear(); selectedID = nil; copyStatus = "" }
         } message: { Text("This removes Yada's saved history. Text already copied elsewhere is unaffected.") }
     }
+    private func historyText(_ entry: SavedTranscript) -> String {
+        switch version {
+        case "Raw": entry.rawText ?? entry.text
+        case "Cleaned": entry.cleanedText ?? entry.text
+        case "Formatted": entry.formattedText ?? entry.text
+        default: entry.text
+        }
+    }
+
 }
 
 // A debug-only driver exercises the real views/controller without microphone or user history.
@@ -287,14 +356,23 @@ enum UIValidation {
 private func makeAppController() -> SessionController {
     #if DEBUG
     if UIValidation.isEnabled {
-        return SessionController { PreviewRecognition() }
+        return SessionController(formatter: PreviewFormatter()) { PreviewRecognition() }
     }
     #endif
     let testing = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    return SessionController(history: RecentTranscripts(fileURL: testing ? nil : RecentTranscripts.defaultURL))
+    return SessionController(history: RecentTranscripts(fileURL: testing ? nil : RecentTranscripts.defaultURL), cleanup: CleanupSettings(fileURL: testing ? nil : CleanupSettings.defaultURL))
 }
 
 #if DEBUG
+@MainActor
+private final class PreviewFormatter: TextFormatting {
+    var availabilityMessage: String { "Synthetic formatter for UI checks. No model is used." }
+    func format(_ text: String, style: TextMode, locale: Locale) async throws -> String {
+        try await Task.sleep(for: .milliseconds(300))
+        return style == .bullets ? "• " + text : text
+    }
+}
+
 @MainActor
 private final class PreviewRecognition: RecognitionSession {
     private var levels: Task<Void, Never>?
@@ -322,3 +400,34 @@ private final class PreviewRecognition: RecognitionSession {
     func cancel() async { levels?.cancel() }
 }
 #endif
+
+struct TerminologyView: View {
+    let settings: CleanupSettings
+    @Environment(\.dismiss) private var dismiss
+    @State private var source = ""
+    @State private var replacement = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Your terminology").font(.title2.bold())
+            Text("Exact, case-sensitive phrases. Applied in Clean and reviewed modes, outside quotations and code. Raw bypasses these rules.").font(.callout)
+            List(settings.replacements) { term in
+                HStack {
+                    Text(term.source + " → " + term.replacement)
+                    Spacer()
+                    Button("Delete") { settings.delete(term.source) }
+                }
+            }.frame(height: 180)
+            TextField("Recognized phrase", text: $source)
+            TextField("Replace with", text: $replacement)
+            if let error = settings.errorMessage { Text(error).foregroundStyle(.red).font(.caption) }
+            HStack {
+                Button("Add replacement") {
+                    settings.add(source: source, replacement: replacement)
+                    if settings.errorMessage == nil { source = ""; replacement = "" }
+                }
+                Spacer()
+                Button("Done") { dismiss() }
+            }
+        }.padding(24).frame(width: 500)
+    }
+}

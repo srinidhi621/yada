@@ -30,7 +30,7 @@ Denied microphone access is recoverable in System Settings → Privacy & Securit
 ## Scope and privacy
 
 - One app target and one test target, using SwiftUI/AppKit, AVAudioEngine and SpeechAnalyzer/SpeechTranscriber.
-- No LLM cleanup, system audio, meeting features, database, audio files, telemetry, analytics or cloud fallback.
+- No cloud inference, system audio, meeting features, database, audio files, telemetry, analytics or cloud fallback.
 - Audio remains in memory only. At the user’s request, the 50 most recent nonempty finalized transcripts are saved as JSON under `~/Library/Application Support/Yada/RecentTranscripts.json` (directory permissions 0700; file permissions 0600). No audio is saved. Preferences keep the chosen shortcut and speech locale. Starting another session replaces the current preview; older finalized text remains in history until deleted or evicted by the 50-entry limit. Cancel discards the active session without saving it. Clear removes only the current preview. Recent transcripts → Delete/Clear history removes saved copies; copied text elsewhere and external backups are outside this control. Local files are not application-encrypted; external backup software may copy them.
 - Copy uses `NSPasteboard`'s `currentHostOnly` option. Clipboard managers can still read or sync copied contents. Yada does not clear the clipboard when its preview clears.
 - The preview is deliberately not directly selectable: copying goes through the explicit current-host-only Copy action after finalization.
@@ -51,7 +51,7 @@ Keep personal evaluation audio and transcripts outside this repository and outsi
 - [KeyboardShortcuts 3.0.1](https://github.com/sindresorhus/KeyboardShortcuts/tree/3.0.1), MIT. Its manifest has no additional package dependencies; license remains in the resolved source checkout.
 - The installed macOS SDK's Speech and AppKit declarations were checked during implementation.
 
-The first-build prompt describes the initial slice. The product specification records the subsequent user-approved Dock/pill/local-history extension. The automatic insertion extension is implemented; live application compatibility remains to be verified. Later roadmap phases are not implemented.
+The first-build prompt describes the initial slice. See [the build plan](plan.md) for current delivery status. The product specification records the subsequent user-approved Dock/pill/local-history extension. The automatic insertion extension is implemented; live application compatibility remains to be verified. Later roadmap phases are not implemented.
 
 ## Dock, menu bar and recording pill
 
@@ -76,3 +76,21 @@ Yada uses macOS Accessibility to replace only the selected text of the captured 
 Native-field insertion does not change the clipboard. The installed Outlook and Teams apps instead receive a single Command+V event sent to the captured process after the same destination checks. This path puts the transcript on the current-host-only clipboard and leaves it there, avoiding a timed restoration that could race a delayed paste. Clipboard managers may still read or sync it. No Return key is sent. Surrounding field text is read temporarily to compare fingerprints and verify the result; it is not logged or persisted. Only dictated transcripts enter Yada history. Cross-process checks and writes are not atomic, and editor undo/formatting behavior needs live testing.
 
 Version 0.1.0 uses shortcut key-down for start/stop, and a running session can always receive Stop even during a language setup refresh. Automated checks pass; verify the physical shortcut and Microsoft compose fields after restarting the updated build.
+
+## Cleanup and local formatting
+
+Select **Text mode** in Setup before recording:
+
+- **Raw** (default): recognizer output, unchanged. Your shortcut stops and inserts as before.
+- **Clean**: collapse repeated horizontal spaces outside explicit quotes/code and apply your saved terminology. It keeps line breaks and indented/code text. It does not delete filler words or infer spoken corrections. Use **Terminology…** to add exact, case-sensitive phrase replacements. Replacements have word boundaries and do not cascade into each other. Clean uses no model.
+- **Prose / Bullets / Email**: clean, then make one request to Apple's on-device `SystemLanguageModel`. Yada opens for review rather than inserting automatically. No cloud provider, tools, email sending or additional inference package is used.
+
+For a model result, compare it with **Original and cleanup → Raw**. Choose **Use reviewed text**, click the destination field, and press Control+Y once to insert that reviewed text. That press does not start recording. **Cancel pending insertion** disarms it. You can instead copy formatted text or use the unformatted version. Uncertain insertion is never retried automatically.
+
+This Mac reported `appleIntelligenceNotEnabled` during implementation. Enable Apple Intelligence yourself in System Settings → Apple Intelligence & Siri, allow its model setup to finish, then use **Check model** in Yada. Raw and Clean work without it. Availability is checked again at each format request. Unsupported languages, refusal, context errors, empty output, cancellation or the 30-second timeout retain the original text. Input over 3,000 UTF-8 bytes is rejected rather than truncated. The app does not change Apple Intelligence settings or download a separate model.
+
+Model output can change meaning even when numbers match. A changed-number warning is only a review aid; it is not an accuracy guarantee. Live model quality is not yet verified on this Mac. Keep code, numbers, names, negations and commitments under review. The model is instructed to treat dictated instructions as text, with no tools or execution authority.
+
+History retains raw, cleaned and formatted versions when present, plus cleanup version/style. Existing history entries load as raw-only records without a destructive migration. **Recent transcripts** lets you view and copy each available version. Terminology and mode are stored locally in `~/Library/Application Support/Yada/CleanupSettings.json`; they are not learned from other applications. Settings errors are visible and corrupt files are not silently overwritten.
+
+See [cleanup and formatting acceptance](docs/mvp3-acceptance.md) for measured results and remaining tests. Apple's [Foundation Models documentation](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel) identifies this model as the on-device model powering Apple Intelligence.
