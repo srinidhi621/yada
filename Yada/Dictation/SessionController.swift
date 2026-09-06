@@ -123,7 +123,8 @@ final class SessionController {
                     guard let self, self.generation == id, self.state == .recording else { return }
                     self.level = value
                 }, onFailure: { [weak self] message in
-                    guard let self, self.generation == id else { return }
+                    guard let self, self.generation == id,
+                          [.preparing, .recording, .finalizing].contains(self.state) else { return }
                     self.fail(message)
                 })
                 guard generation == id, state == .preparing else { return }
@@ -148,11 +149,7 @@ final class SessionController {
             do {
                 try await active.stop()
                 guard generation == id, state == .finalizing else { return }
-                transcript.finish()
-                cleanedText = activeMode == .raw ? transcript.finalText : TextCleanup.apply(transcript.finalText, replacements: activeReplacements)
-                outputText = cleanedText
-                savedID = history.append(outputText, rawText: transcript.finalText, cleanedText: activeMode == .raw ? nil : cleanedText,
-                                         transformVersion: activeMode == .raw ? nil : TextCleanup.version)
+                finalizeTranscript()
                 finalizationMS = Self.milliseconds(since: stopped)
                 session = nil
                 if activeMode.requiresReview, !outputText.isEmpty {
@@ -162,22 +159,7 @@ final class SessionController {
                     return
                 }
                 if let target = insertionTarget, !outputText.isEmpty {
-                    state = .delivering
-                    message = "Inserting into your text field…"
-                    let result = await target.insert(outputText)
-                    insertionTarget = nil
-                    switch result {
-                    case .inserted:
-                        shouldPresentPreview = false
-                        message = "Inserted into your text field."
-                        state = .ready
-                    case .notInserted(let reason):
-                        message = reason
-                        state = .ready
-                    case .uncertain(let reason):
-                        message = reason
-                        state = .outcomeUnknown
-                    }
+                    await deliver(to: target, successMessage: "Inserted into your text field.")
                 } else {
                     insertionTarget = nil
                     message = transcript.finalText.isEmpty ? "No speech was finalized. Nothing to copy." : (previewReason ?? "Finalized. Review the text, then choose Copy.")
@@ -187,6 +169,37 @@ final class SessionController {
                 guard generation == id else { return }
                 fail(Self.userMessage(error))
             }
+        }
+    }
+
+    private func finalizeTranscript() {
+        transcript.finish()
+        let raw = transcript.finalText
+        let useCleanup = activeMode != .raw
+        cleanedText = useCleanup ? TextCleanup.apply(raw, replacements: activeReplacements) : raw
+        outputText = cleanedText
+        savedID = history.append(outputText, rawText: raw, cleanedText: useCleanup ? cleanedText : nil,
+                                 transformVersion: useCleanup ? TextCleanup.version : nil)
+    }
+
+    private func deliver(to target: any InsertionTarget, successMessage: String) async {
+        state = .delivering
+        message = "Inserting into your text field…"
+        let result = await target.insert(outputText)
+        insertionTarget = nil
+        switch result {
+        case .inserted:
+            shouldPresentPreview = false
+            message = successMessage
+            state = .ready
+        case .notInserted(let reason):
+            shouldPresentPreview = true
+            message = reason
+            state = .ready
+        case .uncertain(let reason):
+            shouldPresentPreview = true
+            message = reason
+            state = .outcomeUnknown
         }
     }
 
@@ -315,6 +328,13 @@ final class SessionController {
         message = "Click the destination text field, then press your shortcut once to insert this reviewed text. No recording will start."
     }
 
+    func accessibilityGranted() {
+        guard needsAccessibility, !busy else { return }
+        needsAccessibility = false
+        message = canCopy ? "Text insertion is ready. Choose the text to insert below, then press your shortcut in the destination." : "Text insertion is ready. Return to your text field and press your shortcut."
+        if state == .failure { state = .idle }
+    }
+
     func discardReviewedInsertion() { readyToInsert = false; message = "Insertion cancelled. Your text remains available here." }
 
     private func deliverReviewed(_ preparation: InsertionPreparation) {
@@ -328,17 +348,12 @@ final class SessionController {
             state = .idle; state = .ready
         case .preview(let reason):
             message = reason ?? "Click an editable field outside Yada, then choose Use reviewed text again."
+            shouldPresentPreview = true
             state = .idle; state = .ready
         case .target(let target):
+            // Mark delivery synchronously so a second shortcut cannot start recording.
             state = .delivering
-            operation = Task {
-                let result = await target.insert(outputText)
-                switch result {
-                case .inserted: shouldPresentPreview = false; message = "Inserted reviewed text."; state = .ready
-                case .notInserted(let reason): shouldPresentPreview = true; message = reason; state = .ready
-                case .uncertain(let reason): shouldPresentPreview = true; message = reason; state = .outcomeUnknown
-                }
-            }
+            operation = Task { await deliver(to: target, successMessage: "Inserted reviewed text.") }
         }
     }
 

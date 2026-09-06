@@ -6,7 +6,7 @@
 
 Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Optional cleanup fixes spacing and your saved terminology; Apple’s on-device model can prepare prose, bullets or an email draft for review.
 
-**Status:** early personal-development build. The latest automated suite passes 41 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
+**Status:** early personal-development build. The latest automated suite passes 49 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
 
 ## What it does
 
@@ -30,7 +30,7 @@ Yada does not record system audio, capture meetings, identify speakers or genera
 | Accessibility permission | Automatic text insertion |
 | Apple Intelligence enabled and its model ready | Optional Prose, Bullets and Email modes |
 
-Raw and Clean do not require Apple Intelligence. No API key, Python environment, inference server, simulator or Xcode predictive completion model is needed. A paid Apple Developer account is not required for this local ad-hoc-signed build.
+Raw and Clean do not require Apple Intelligence. No API key, Python environment, inference server, simulator or Xcode predictive completion model is needed. A paid Apple Developer account is not required for local development. Public releases require Developer ID signing and notarization; see [release preparation](docs/releases.md).
 
 Initial Swift package resolution and any missing Apple language/model assets need an internet connection. Yada has no hosted inference fallback.
 
@@ -185,3 +185,13 @@ The next priority is physical acceptance of everyday dictation and reviewed form
 - [Product and technical specification](Yada_Product_and_Technical_Spec.md): design decisions and future scope.
 - [First-build prompt](Yada_First_Build_Prompt.md): historical starting requirements.
 - [Apple SpeechTranscriber](https://developer.apple.com/documentation/speech/speechtranscriber) and [SystemLanguageModel](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel): platform API references.
+
+## Development identity and release preparation
+
+Debug builds now appear as **Yada Development** (`com.srinidhi621.yada.dev`) and use `~/Library/Application Support/Yada Development/` for history and cleanup settings. Existing everyday Yada data stays in `~/Library/Application Support/Yada/`; it is not copied or deleted. Development builds have their own macOS permissions and preferences. The production identifier remains `com.srinidhi621.yada`.
+
+The Setup panel shows microphone and Accessibility status, opens the relevant settings on request, and checks permissions again when you return. Shortcuts no longer trigger repeated system permission dialogs. The existing installed/running app is not replaced by these source changes.
+
+Release tooling and nine synthetic tooling tests are available in `scripts/release.py` and `scripts/test_release.py`. No signed/notarized installer has been produced yet. See [release instructions](docs/releases.md) for the certificate and fresh-install/upgrade gates.
+
+The [18-case local formatting evaluation](docs/formatting-evaluation-2026-09-07.md) found failures with quotations and code. Model output still requires review; its semantic acceptance gate remains open.

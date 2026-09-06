@@ -75,7 +75,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 controller.handleShortcut(locale: language.locale,
                     setupBusy: language.checking || language.downloading,
                     capture: { ActiveFieldInsertion.capture() })
-                if controller.needsAccessibility { ActiveFieldInsertion.requestAccessibility() }
             }
         }
         observeState()
@@ -126,6 +125,8 @@ struct MenuContent: View {
 struct ContentView: View {
     @Bindable var controller: SessionController
     @Bindable var language: LanguageSetup
+    @State private var permissions = PermissionSetup()
+    @Environment(\.scenePhase) private var scenePhase
     @State private var copyStatus = ""
     @State private var showTerms = false
     @State private var formatStyle: TextMode = .prose
@@ -146,6 +147,31 @@ struct ContentView: View {
             }
             GroupBox("Setup") {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("1. Allow microphone and text insertion").font(.headline)
+                    HStack {
+                        Label(permissions.microphone == .authorized ? "Microphone ready" : "Microphone access needed", systemImage: permissions.microphone == .authorized ? "checkmark.circle" : "mic")
+                        Spacer()
+                        if permissions.microphone == .notDetermined {
+                            Button("Allow microphone") { Task { await permissions.allowMicrophone() } }
+                                .disabled(permissions.requestingMicrophone || UIValidation.isEnabled)
+                        } else if permissions.microphone == .denied {
+                            Button("Open microphone settings") { PermissionSetup.openSettings("Microphone") }.disabled(UIValidation.isEnabled)
+                        } else if permissions.microphone == .restricted {
+                            Text("Restricted by this Mac's administrator").font(.caption)
+                        }
+                    }
+                    HStack {
+                        Label(permissions.accessibility ? "Text insertion ready" : "Text insertion access needed", systemImage: permissions.accessibility ? "checkmark.circle" : "keyboard")
+                        Spacer()
+                        if !permissions.accessibility {
+                            Button("Open Accessibility settings") { ActiveFieldInsertion.requestAccessibility() }.disabled(UIValidation.isEnabled)
+                        }
+                    }
+                    if !permissions.accessibility {
+                        Text("Enable Yada in Accessibility, then return here. We check again automatically. If it is already enabled, quit and reopen Yada; an older development build may need to be removed and added again.").font(.caption)
+                    }
+                    Divider()
+                    Text("2. Choose your shortcut and speech language").font(.headline)
                     KeyboardShortcuts.Recorder("Recording shortcut", name: .toggleDictation)
                         .shortcutValidation { shortcut in
                             if shortcut.key == .function || shortcut.modifiers.contains(.function) {
@@ -177,12 +203,13 @@ struct ContentView: View {
                     }
                     Text(language.status).font(.caption).fixedSize(horizontal: false, vertical: true)
                     if language.downloading { ProgressView(value: language.progress).accessibilityLabel("Language download progress") }
+                    Divider()
+                    Text("3. Try a short dictation").font(.headline)
+                    Text("Choose Start recording below and say ‘This is a practice sentence.’ Stop to see the result here. Then click a text field in another app and use your shortcut to start and stop dictation there.").font(.caption)
+                    Text("Apple Intelligence is optional. Raw and Clean work without it; formatted styles require review.").font(.caption).foregroundStyle(.secondary)
                 }.padding(6)
             }.disabled(controller.busy || language.checking || language.downloading)
             Text(controller.message).fixedSize(horizontal: false, vertical: true)
-            if controller.needsAccessibility {
-                Button("Allow text insertion") { ActiveFieldInsertion.requestAccessibility() }
-            }
             if let error = controller.history.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
@@ -266,9 +293,17 @@ struct ContentView: View {
         }
         .padding(24)
         .frame(minWidth: 500, minHeight: 600)
-        .task { if !UIValidation.isEnabled { await language.check() } }
+        .task { if !UIValidation.isEnabled { refreshPermissions(); await language.check() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active && !UIValidation.isEnabled { refreshPermissions() }
+        }
         .onChange(of: controller.state) { _, _ in copyStatus = "" }
         .sheet(isPresented: $showTerms) { TerminologyView(settings: controller.cleanup) }
+    }
+
+    private func refreshPermissions() {
+        permissions.refresh()
+        if permissions.accessibility { controller.accessibilityGranted() }
     }
 }
 

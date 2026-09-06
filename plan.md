@@ -1,12 +1,12 @@
 # Yada build plan
 
-Updated: September 6, 2026. This is the delivery checklist; `Yada_Product_and_Technical_Spec.md` contains the detailed product design. Update this file as work passes its checks. A built feature is not automatically a verified feature.
+Updated: September 7, 2026. This is the delivery checklist; `Yada_Product_and_Technical_Spec.md` contains the detailed product design. Update this file as work passes its checks. A built feature is not automatically a verified feature.
 
 ## Current position
 
 Version 0.1.0 is on `main` (initial release commit `a75d04d`). It includes local Apple transcription, a configurable start/stop shortcut (currently Control+Y), Dock and menu-bar access, a small recording pill, local history of 50 transcripts, and automatic insertion. Native accessible fields use direct selected-text writes. Installed Outlook and Teams use a guarded paste path that leaves the transcript on the local clipboard. No message is sent automatically.
 
-The published reliability build passes 29 automated tests. The local cleanup/formatting implementation and its additional evidence are recorded in docs/mvp3-acceptance.md. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
+The latest local build passes 49 automated tests, including the simplification and review fixes. Cleanup/formatting evidence is recorded in docs/mvp3-acceptance.md. Signing, packaging and onboarding are the next milestone; the remaining physical reliability checks stay open. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
 
 ## Ground rules
 
@@ -55,7 +55,7 @@ Current implementation: Raw/Clean mode, whitespace and exact terminology rules, 
 
 Gate: numbers, negation, dates, names, quotations and code survive; already-clean text stays substantively unchanged; cancellation and insertion checks still pass. No model download is needed.
 
-### 3. Offer local formatting with review: implemented locally, live model test pending
+### 3. Offer local formatting with review: implemented, broader evaluation pending
 
 1. Check the installed Apple on-device model's availability before adding inference; record any user setup needed.
 2. Implement one bounded model pass for faithful prose, bullets or email draft. Give it no tools or external access.
@@ -63,18 +63,32 @@ Gate: numbers, negation, dates, names, quotations and code survive; already-clea
 4. Handle timeout, unavailable model, refusal and invalid output by retaining faithful text with a clear reason.
 5. Evaluate synthetic fixtures for meaning, numbers, commitments and instruction-like transcript text. Measure latency locally.
 
-Current implementation: explicit Apple on-device model, three review styles, cancellation/deadline, preserved originals, and one-shot reviewed insertion. This Mac reports Apple Intelligence disabled. Model semantic quality and interactive UI acceptance are pending; unit tests cannot close those gates.
+Current implementation: explicit Apple on-device model, three review styles, cancellation/deadline, preserved originals, and one-shot reviewed insertion. Apple Intelligence now reports available. Production LocalFormatter passed one synthetic English (US) smoke check; English (India) was rejected by the framework locale check. Broader semantic quality and interactive UI acceptance remain pending; unit tests cannot close those gates.
 
 Gate: no unapproved factual or commitment changes in the critical evaluation set. Compare one alternative local model only if Apple fails the measured workload; review disk, memory and download requirements first.
 
-### 4. Package a repeatable personal build
+### 4. Signing, packaging and onboarding: implementation prepared, release acceptance pending
 
-1. Document one build/test/install procedure with a stable app location so launching and permission maintenance are predictable.
-2. Verify version display, graceful quit, clean upgrade, history compatibility and recovery from corrupt local data.
-3. Add login startup only as an explicit user-controlled preference if requested.
-4. Decide personal ad-hoc installation versus signed distribution before adding Developer ID signing/notarization. A paid developer account is not required for current local development.
+Outcome: users download a signed, notarized Yada DMG from GitHub Releases, install it in Applications and complete a short guided setup. Xcode is not required for users of the packaged app. Normal upgrades should retain permissions, settings and history.
 
-Gate: a fresh build can be installed, launched and upgraded using the documented steps without losing history or silently resetting permissions. External distribution is a separate release decision.
+1. Prepare a local release script with explicit version, bundle identity and signing checks. Build and test before packaging; stop clearly when credentials are missing. Do not present an ad-hoc build as a distributable release.
+2. Complete Apple Developer enrollment and create a Developer ID Application certificate. The user handles payment, authentication and account agreements. Keep private keys and notarization credentials outside Git.
+3. Keep the everyday installed app at `/Applications/Yada.app` with a consistent Developer ID identity and bundle identifier. Give development builds a separate identity and local data location so tests do not disturb the everyday app. Preserve access to existing history during the transition.
+4. Configure release signing, hardened runtime and required entitlements. Submit to Apple's notary service, attach its ticket, validate the signature and Gatekeeper assessment, and package the DMG. Actual submission waits for credentials and authorization.
+5. Implement first-run setup for microphone access, Accessibility access, speech assets and a synthetic practice field. Recheck permission when the app becomes active; stop repeated automatic permission dialogs. Explain recovery when macOS does not recognize a grant. Keep Apple Intelligence optional and report locale support clearly.
+6. Verify fresh installation on another supported Mac and an upgrade between two signed releases. Check permission persistence, history/settings compatibility, quit/relaunch, and text insertion without sending messages.
+7. Prepare release notes, supported hardware/macOS requirements and download instructions. Publish the signed artifact to GitHub Releases only when authorized. Automatic updates and login startup are outside this milestone.
+
+Independent work while enrollment is pending: implement and test the credential-free release preflight/package tooling, implement onboarding state and regression coverage, and expand the synthetic Apple formatting evaluation with per-case latency and meaning checks. Use isolated build output and in-memory or temporary stores; do not restart the user's app, record audio or read private history.
+
+
+Implemented locally on September 7: guided permission status/actions with activation refresh and no automatic shortcut pop-ups; separate Development identity/storage; release preflight, build/sign/package and explicit notarize commands; nine tooling tests. App suite passes 49 tests. No valid signing identity exists on this Mac, so actual signing/notarization/DMG creation remain unrun. Native UI automation still fails before inspection; onboarding visual acceptance remains pending. See `docs/releases.md`.
+
+Synthetic evaluation completed: 18 production formatter requests, median 406 ms. Five semantic failures and one attribution concern were found; the critical quality gate failed. See `docs/formatting-evaluation-2026-09-07.md`. The next model task is to handle protected quotations/code faithfully and repeat the evaluation before expanding use. Automatic generated-text delivery remains prohibited.
+
+After the three preparation tasks: complete certificate enrollment/setup; verify actual signed/notarized packaging; test fresh installation and signed upgrades; finish the physical dictation/insertion matrix; address formatting evaluation failures; then authorize and publish the first downloadable release. Later product stages 5 through 8 remain pending and are not part of release tooling.
+
+Gate: verified fresh install and signed upgrade with no lost data or repeated permission repair under normal conditions. Stable signing does not bypass the initial macOS permission grant. Tooling-only checks cannot establish notarization or physical onboarding success.
 
 ### 5. Record and transcribe a meeting manually
 

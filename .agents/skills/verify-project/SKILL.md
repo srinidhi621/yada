@@ -48,3 +48,11 @@ Read docs/mvp3-acceptance.md. The normal suite includes deterministic cleanup/te
 The isolated `--ui-preview` bundle uses synthetic formatting as well as synthetic recognition, in-memory settings/history and no global shortcut. Exercise mode/terminology controls, formatting progress and cancellation, raw/clean/formatted comparisons, history versions and the pending-insertion controls. Do not use real user content. If native UI tools fail, record the blocker instead of claiming a visual pass.
 
 Read `SystemLanguageModel.default.availability` without changing settings. The user enables Apple Intelligence and completes any Apple-managed model setup. Use only the synthetic semantic corpus in docs/mvp3-acceptance.md for model evaluation. No cloud inference, model feedback submission, transcript logging or hidden download is part of verification. Reviewed insertion captures a fresh field; never auto-submit an email/chat while testing.
+
+## Signing, onboarding and formatting evaluation
+
+Debug now uses `com.srinidhi621.yada.dev` and the separate `Yada Development` Application Support directory; Release preserves the existing production identity/data. Use an isolated DerivedData directory for testing so the user's running bundle is not replaced. PermissionSetupTests exercise read-only status refresh, explicit microphone requests and grant recovery without accessing real privacy settings. Native preview permission buttons are disabled; physical authorization and activation-refresh checks remain user-driven.
+
+Run `python3 -m unittest discover -s scripts -p test_release.py` for credential-free release boundary tests. Follow docs/releases.md for actual signing/notarization; mocked tests cannot close those gates. No Apple submission or GitHub publishing is included in verification.
+
+Run `python3 scripts/evaluate-formatting.py` only for its fixed synthetic corpus. It compiles production LocalFormatter and writes results under `.build/formatting-evaluation/`. Manually assess meaning against every input; successful generation and unchanged numbers are not semantic proof. See docs/formatting-evaluation-2026-09-07.md for observed failures and the open quality gate.

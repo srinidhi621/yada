@@ -23,7 +23,7 @@ struct SavedTranscript: Codable, Identifiable, Equatable {
 final class RecentTranscripts {
     static let limit = 50
     static var defaultURL: URL {
-        URL.applicationSupportDirectory.appending(path: "Yada/RecentTranscripts.json")
+        AppStorage.directory.appending(path: "RecentTranscripts.json")
     }
     private(set) var entries: [SavedTranscript] = []
     private(set) var errorMessage: String?

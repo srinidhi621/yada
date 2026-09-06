@@ -15,7 +15,7 @@ struct TermReplacement: Codable, Equatable, Identifiable {
 
 @MainActor @Observable
 final class CleanupSettings {
-    static var defaultURL: URL { URL.applicationSupportDirectory.appending(path: "Yada/CleanupSettings.json") }
+    static var defaultURL: URL { AppStorage.directory.appending(path: "CleanupSettings.json") }
     private(set) var mode: TextMode = .raw
     private(set) var replacements: [TermReplacement] = []
     private(set) var errorMessage: String?
@@ -67,35 +67,38 @@ final class CleanupSettings {
 }
 
 enum TextCleanup {
-    static let version = "whitespace-terms-v1"
+    static let version = "whitespace-terms-v2"
+
+    // Immutable syntax rule compiled once. Dynamic terminology is compiled once per utterance.
+    private static let protected = try! NSRegularExpression(pattern: #"```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|(?<![\p{L}\p{N}])'[^'\n]*'|(?m:^\h{2,}[^\n]*$)|(?m:^\t[^\n]*$)"#)
 
     static func apply(_ raw: String, replacements: [TermReplacement]) -> String {
+        let lookup = Dictionary(uniqueKeysWithValues: replacements.map { ($0.source, $0.replacement) })
+        let alternatives = replacements.map(\.source).sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
+        let terms = replacements.isEmpty ? nil : try! NSRegularExpression(pattern: "(?<![\\p{L}\\p{M}\\p{N}_])(?:" + alternatives + ")(?![\\p{L}\\p{M}\\p{N}_])")
+
+        func clean(_ text: String) -> String {
+            let normalized = text.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
+            guard let terms else { return normalized }
+            let original = normalized as NSString
+            let result = NSMutableString(string: normalized)
+            // Match the original once: replacements never trigger other replacements.
+            for match in terms.matches(in: normalized, range: NSRange(location: 0, length: original.length)).reversed() {
+                result.replaceCharacters(in: match.range, with: lookup[original.substring(with: match.range)]!)
+            }
+            return result as String
+        }
+
         // Preserve explicit quotations and code; no filler words are deleted by rules.
-        let protected = try! NSRegularExpression(pattern: #"```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|(?<![\p{L}\p{N}])'[^'\n]*'|(?m:^\h{2,}[^\n]*$)|(?m:^\t[^\n]*$)"#)
         let source = raw as NSString
         var cursor = 0
         var output = ""
         for match in protected.matches(in: raw, range: NSRange(location: 0, length: source.length)) {
-            output += clean(source.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), replacements: replacements)
+            output += clean(source.substring(with: NSRange(location: cursor, length: match.range.location - cursor)))
             output += source.substring(with: match.range)
             cursor = NSMaxRange(match.range)
         }
-        output += clean(source.substring(from: cursor), replacements: replacements)
+        output += clean(source.substring(from: cursor))
         return output
-    }
-
-    private static func clean(_ text: String, replacements: [TermReplacement]) -> String {
-        let normalized = text.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
-        guard !replacements.isEmpty else { return normalized }
-        let alternatives = replacements.map(\.source).sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
-        let regex = try! NSRegularExpression(pattern: "(?<![\\p{L}\\p{N}_])(?:" + alternatives + ")(?![\\p{L}\\p{N}_])")
-        let original = normalized as NSString
-        let result = NSMutableString(string: normalized)
-        let lookup = Dictionary(uniqueKeysWithValues: replacements.map { ($0.source, $0.replacement) })
-        // Match the original once: replacements never trigger other replacements.
-        for match in regex.matches(in: normalized, range: NSRange(location: 0, length: original.length)).reversed() {
-            result.replaceCharacters(in: match.range, with: lookup[original.substring(with: match.range)]!)
-        }
-        return result as String
     }
 }

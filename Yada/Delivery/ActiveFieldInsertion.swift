@@ -137,8 +137,10 @@ final class ActiveFieldInsertion: InsertionTarget {
     }
 
     static func requestAccessibility() {
+        // Register a fresh installation only on an explicit setup-button click.
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+        PermissionSetup.openSettings("Accessibility")
     }
 
     private func unchangedField() -> String? {

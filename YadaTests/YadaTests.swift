@@ -496,6 +496,13 @@ final class CleanupTests: XCTestCase {
         let terms = [TermReplacement(source: "yada", replacement: "Yada"), TermReplacement(source: "Yada", replacement: "Wrong"), TermReplacement(source: "cafe", replacement: "café")]
         XCTAssertEqual(TextCleanup.apply("yada yadax _yada YADA cafe \"yada\" `yada`", replacements: terms), "Yada yadax _yada YADA café \"yada\" `yada`")
     }
+    func testTermBoundariesPreserveCombiningMarks() {
+        let terms = [TermReplacement(source: "cafe", replacement: "coffee")]
+        XCTAssertEqual(TextCleanup.apply("cafe cafe\u{301} \u{301}cafe café", replacements: terms),
+                       "coffee cafe\u{301} \u{301}cafe café")
+        XCTAssertEqual(TextCleanup.apply("cafe\u{301}", replacements: [TermReplacement(source: "cafe\u{301}", replacement: "coffee")]), "coffee")
+    }
+
     func testModelNumberWarningIsNotAnEquivalenceClaim() {
         XCTAssertTrue(FormatReview.warning(original: "Pay 120", formatted: "Pay 200").contains("Numbers"))
         XCTAssertTrue(FormatReview.warning(original: "Do not pay 120", formatted: "Pay 120").contains("meaning"))
@@ -623,6 +630,68 @@ final class TextProcessingTests: XCTestCase {
         XCTAssertNil(controller.formattedText)
     }
 
+    func testLateRecognitionFailurePreservesFinalizedText() async {
+        let recognition = FakeRecognition()
+        let controller = SessionController(formatter: FakeFormatter()) { recognition }
+        controller.toggle(locale: .current)
+        await waitUntil { controller.state == .recording }
+        controller.stop()
+        await waitUntil { controller.state == .ready }
+        recognition.onFailure?("Late recognition failure")
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertEqual(controller.transcript.finalText, "Final words.")
+        XCTAssertEqual(controller.outputText, "Final words.")
+        XCTAssertEqual(controller.history.entries.count, 1)
+        XCTAssertEqual(controller.history.entries.first?.text, "Final words.")
+        XCTAssertTrue(controller.canCopy)
+    }
+
+    func testReviewedInsertionFallbackPresentsPreviouslyHiddenPreview() async {
+        let target = FakeInsertionTarget()
+        let controller = SessionController(formatter: FakeFormatter()) { FakeRecognition() }
+        controller.toggle(locale: .current, insertion: .target(target))
+        await waitUntil { controller.state == .recording }
+        controller.stop()
+        await waitUntil { controller.state == .ready }
+        XCTAssertFalse(controller.shouldPresentPreview)
+        controller.prepareReviewedInsertion(useFormatted: false)
+        controller.handleShortcut(locale: .current, setupBusy: false, capture: { .preview("Unsupported field") })
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertTrue(controller.shouldPresentPreview)
+        XCTAssertEqual(controller.message, "Unsupported field")
+        XCTAssertEqual(controller.outputText, "Final words.")
+        XCTAssertEqual(target.calls, ["Final words."])
+        XCTAssertFalse(controller.readyToInsert)
+    }
+
+    func testAutomaticAndReviewedDeliveryShareResultHandling() async {
+        let cases: [(InsertionResult, SessionState, Bool)] = [
+            (.inserted, .ready, false),
+            (.notInserted("Changed field"), .ready, true),
+            (.uncertain("Check destination"), .outcomeUnknown, true)
+        ]
+        for (result, state, preview) in cases {
+            for reviewed in [false, true] {
+                let target = FakeInsertionTarget(); target.result = result
+                let controller = SessionController(formatter: FakeFormatter()) { FakeRecognition() }
+                if reviewed {
+                    controller.showSaved(SavedTranscript(id: UUID(), createdAt: .now, text: "Saved words."))
+                    controller.prepareReviewedInsertion(useFormatted: false)
+                    controller.handleShortcut(locale: .current, setupBusy: false, capture: { .target(target) })
+                } else {
+                    controller.toggle(locale: .current, insertion: .target(target))
+                    await waitUntil { controller.state == .recording }
+                    controller.stop()
+                }
+                await waitUntil { controller.state == state }
+                XCTAssertEqual(controller.shouldPresentPreview, preview)
+                XCTAssertEqual(target.calls.count, 1)
+                XCTAssertTrue(controller.canCopy)
+                XCTAssertFalse(controller.readyToInsert)
+            }
+        }
+    }
+
     func testReviewedInsertionPermissionFailureCanBeRetried() async {
         let controller = SessionController(formatter: FakeFormatter()) { FakeRecognition() }
         let entry = SavedTranscript(id: UUID(), createdAt: .now, text: "Pay 10", rawText: "Pay 10", formattedText: "Pay 20")
@@ -678,5 +747,58 @@ final class TextProcessingTests: XCTestCase {
         broken.setMode(.email)
         XCTAssertEqual(broken.mode, .raw)
         XCTAssertEqual(try Data(contentsOf: url), corrupt)
+    }
+}
+
+@MainActor
+final class PermissionSetupTests: XCTestCase {
+    func testRefreshTracksGrantAndRevocationWithoutRequestingPermission() {
+        var trusted = false
+        var status: AVAuthorizationStatus = .denied
+        let setup = PermissionSetup(readAccessibility: { trusted }, readMicrophone: { status }, requestMicrophone: { XCTFail("Refresh must not prompt"); return false })
+        setup.refresh()
+        XCTAssertFalse(setup.accessibility)
+        XCTAssertEqual(setup.microphone, .denied)
+        trusted = true; status = .authorized
+        setup.refresh()
+        XCTAssertTrue(setup.accessibility)
+        XCTAssertEqual(setup.microphone, .authorized)
+        trusted = false
+        setup.refresh()
+        XCTAssertFalse(setup.accessibility)
+    }
+
+    func testMicrophoneRequestIsExplicitAndNotRepeatedAfterDecision() async {
+        var status: AVAuthorizationStatus = .notDetermined
+        var requests = 0
+        let setup = PermissionSetup(readAccessibility: { false }, readMicrophone: { status }, requestMicrophone: {
+            requests += 1; status = .denied; return false
+        })
+        await setup.allowMicrophone()
+        await setup.allowMicrophone()
+        XCTAssertEqual(requests, 1)
+        XCTAssertEqual(setup.microphone, .denied)
+        XCTAssertFalse(setup.requestingMicrophone)
+    }
+
+    func testAccessibilityGrantClearsBlockedStartWithoutRecording() {
+        let controller = SessionController { XCTFail("Granting permission must not start recording"); return FakeRecognition() }
+        controller.toggle(locale: .current, insertion: .needsAccessibility)
+        XCTAssertTrue(controller.needsAccessibility)
+        controller.accessibilityGranted()
+        XCTAssertFalse(controller.needsAccessibility)
+        XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testAccessibilityGrantPreservesReviewedText() {
+        let controller = SessionController { FakeRecognition() }
+        controller.showSaved(SavedTranscript(id: UUID(), createdAt: .now, text: "Synthetic saved text"))
+        controller.prepareReviewedInsertion(useFormatted: false)
+        controller.handleShortcut(locale: .current, setupBusy: false, capture: { .needsAccessibility })
+        controller.accessibilityGranted()
+        XCTAssertFalse(controller.needsAccessibility)
+        XCTAssertEqual(controller.outputText, "Synthetic saved text")
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertFalse(controller.readyToInsert)
     }
 }
