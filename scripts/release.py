@@ -55,7 +55,7 @@ def verify_signature(path, team, app=False):
     run('codesign', '--verify', '--deep', '--strict', '--verbose=2', path)
     details = run('codesign', '-d', '--verbose=4', path)
     if f'TeamIdentifier={team}\n' not in details or 'Authority=Developer ID Application:' not in details:
-        raise RuntimeError(f'{path.name}: wrong signing team or certificate; ad-hoc builds cannot be distributed.')
+        raise RuntimeError(f'{path.name}: wrong signing team or certificate; ad-hoc builds cannot use the notarized release workflow.')
     if 'Timestamp=' not in details:
         raise RuntimeError(f'{path.name}: missing secure timestamp.')
     if app:

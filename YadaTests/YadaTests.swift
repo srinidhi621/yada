@@ -550,7 +550,7 @@ final class TextProcessingTests: XCTestCase {
         XCTAssertEqual(controller.history.entries.first?.transformVersion, TextCleanup.version)
     }
     func testRawBypassesReplacementsAndModel() async {
-        let settings = CleanupSettings(); settings.add(source: "Final", replacement: "Changed")
+        let settings = CleanupSettings(); settings.setMode(.raw); settings.add(source: "Final", replacement: "Changed")
         let formatter = FakeFormatter()
         let controller = SessionController(cleanup: settings, formatter: formatter) { FakeRecognition() }
         controller.toggle(locale: Locale(identifier: "en-US"))
@@ -968,5 +968,47 @@ final class MeetingTests: XCTestCase {
         try JSONEncoder().encode(manifest).write(to: root.appending(path: "manifest.json"))
         do { _ = try await MeetingTranscriber().transcribe(directory: root, locale: Locale(identifier: "en-US")); XCTFail("Unsafe path accepted") }
         catch { XCTAssertTrue(SessionController.userMessage(error).contains("invalid audio chunk")) }
+    }
+}
+
+@MainActor
+final class EverydaySetupTests: XCTestCase {
+    func testSavedReviewModeMigratesToSingleAutomaticPath() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "settings.json")
+        let old = CleanupSettings(fileURL: url)
+        old.add(source: "acme", replacement: "Acme")
+        old.setMode(.email)
+        let loaded = CleanupSettings(fileURL: url)
+        XCTAssertEqual(loaded.mode, .clean)
+        XCTAssertEqual(loaded.replacements, [TermReplacement(source: "acme", replacement: "Acme")])
+        XCTAssertEqual(CleanupSettings().mode, .clean)
+    }
+
+    func testSpeechLanguagePersistsImmediatelyAcrossLaunches() {
+        let name = "YadaTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let setup = LanguageSetup(defaults: defaults)
+        setup.selectedID = "en-GB"
+        XCTAssertEqual(LanguageSetup(defaults: defaults).selectedID, "en-GB")
+    }
+
+    func testOnlyOneInstanceCanHoldSharedLock() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var first: AppInstance? = AppInstance()
+        let second = AppInstance()
+        XCTAssertTrue(try first!.acquireLock(at: url))
+        XCTAssertFalse(try second.acquireLock(at: url))
+        first = nil
+        XCTAssertTrue(try second.acquireLock(at: url))
+    }
+
+    func testInstanceDetectionIncludesOldAndDevelopmentCopiesButNotPreview() {
+        XCTAssertEqual(AppInstance.existingPID([(1, "com.srinidhi621.yada"), (2, "com.srinidhi621.yada.dev")], currentPID: 2), 1)
+        XCTAssertEqual(AppInstance.existingPID([(1, "com.srinidhi621.yada.dev")], currentPID: 2), 1)
+        XCTAssertNil(AppInstance.existingPID([(1, "com.srinidhi621.yada.preview"), (2, "com.srinidhi621.yada")], currentPID: 2))
     }
 }

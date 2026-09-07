@@ -1,8 +1,29 @@
-# Signed releases and installation
+# Installation and optional signed releases
 
 Yada's release app keeps bundle identifier `com.srinidhi621.yada` and installs at `/Applications/Yada.app`. Debug builds use `com.srinidhi621.yada.dev` and separate development storage. Use the installed release for everyday dictation; rebuilding development copies should not replace its identity or permissions.
 
 The scripts prepare local artifacts. They do not create certificates, change privacy settings, upload to GitHub, or update a user's installed app. Only the explicitly invoked `notarize` command uploads a DMG to Apple. A successful package build is **not** a completed release.
+
+## Local testing without paid enrollment — current path
+
+Apple Developer enrollment is deferred. From the repository root, run:
+
+```sh
+python3 scripts/package-local.py
+```
+
+This runs the isolated tests, builds the production bundle with ad-hoc signing and the microphone entitlement, verifies its signature, and creates a clearly labelled non-notarized DMG plus SHA-256 file under `.build/local-packages/`. Each run has a fresh output directory. No certificate, installation, privacy reset or upload is performed. Ad-hoc signatures do not provide Apple-verified publisher identity.
+
+1. Quit Yada through its menu-bar menu. Preserve any unfinished text first.
+2. Open the generated DMG and drag Yada onto Applications. Replace an existing Yada there; do not keep a second copy under another name.
+3. Eject the disk image and open `/Applications/Yada.app`. Remove any old Dock shortcut pointing into the development folder and keep the installed app in the Dock instead.
+4. If macOS blocks this trusted testing build, use its per-app **Privacy & Security → Open Anyway** action. Do not disable Gatekeeper globally. Managed Macs may prevent this exception.
+5. For stale duplicate Accessibility rows, quit Yada, remove only the old Yada entries with the minus button, then add `/Applications/Yada.app` with the plus button and enable it. Reopen the installed app. This is user-managed permission repair, not an app preference reset; preserve Application Support folders and all other apps' grants.
+6. Complete the microphone/language setup if requested, then test Control-Y twice in an empty TextEdit document before testing Notes, Outlook and Teams. No mouse interaction with the pill should be needed.
+
+This procedure consolidates the installation but does not guarantee permission retention across ad-hoc rebuilds. Record relaunch/upgrade results before sharing with testers. Existing development history remains in its separate folder; this procedure does not migrate or delete it.
+
+The certificate-based workflow below is optional and deferred. Its stricter checks apply to notarized releases, not the local testing DMG.
 
 ## One-time publisher setup
 
@@ -67,3 +88,11 @@ Existing ad-hoc users may need a one-time permission repair when moving to the s
 The tooling's nine isolated tests cover certificate/team selection, metadata rejection, signed entitlement validation, failure gates, and notarization result handling. They use mocked signing/notarization commands and never upload artifacts. On this development Mac, preflight remains blocked by the absence of a valid Developer ID Application identity. Signed packaging, notarization and fresh-install/upgrade acceptance await account setup. No ad-hoc distributable was produced.
 
 An isolated local-only Release smoke build also passed with hardened runtime and the microphone entitlement, using ad-hoc signing solely for compilation validation. This is not a distributable release and does not verify Developer ID signing, timestamping, notarization or Gatekeeper acceptance. Final Debug metadata is `com.srinidhi621.yada.dev` / `Yada Development`; Release is `com.srinidhi621.yada` / `Yada`.
+
+## Duplicate-instance migration
+
+Updated app builds refuse a second production/development instance before registering the global shortcut. They also use a shared process lock. This does not delete existing macOS Accessibility rows, transfer a grant between bundle IDs, or make ad-hoc signatures stable. The September 7 audit found two running copies and no valid signing identity. Use one production install at `/Applications/Yada.app` for everyday testing; paid signing is deferred and ad-hoc update permission repair remains possible; stop directing everyday users to different DerivedData copies. Existing stale grants require user-managed cleanup during that migration. Never write the TCC database or use a bundle-ID-only ad-hoc signing requirement to bypass identity checks.
+
+### Local package evidence, September 7
+
+`package-local.py` completed: 62 app tests passed, Release built, app signature verification passed, and `hdiutil verify` accepted the generated DMG. Ten Python tooling tests passed. The artifact is non-notarized. No installed-app launch, cross-app dictation or permission persistence was established by these checks.

@@ -52,3 +52,9 @@ The September 7 onboarding build passed 49 app tests, including permission refre
 See `formatting-evaluation-2026-09-07.md` for 18 live synthetic requests and manually reviewed outputs. The critical semantic gate failed on quotations/code. Do not equate successful model generation or unit tests with faithful model output.
 
 Final review fixes were reverified: 49 tests passed, zero failures. Result: `.build/milestone-tests/Logs/Test/Test-Yada-2026.09.07_00-25-04-+0530.xcresult`.
+
+## Single-default dictation follow-on
+
+The user requested removal of mode choices and repeated setup. Dictation now defaults to deterministic cleanup; saved legacy review-mode choices load into this single automatic path, with terms and original transcripts retained. The text-mode picker and model-formatting UI are removed. Permission/language setup is hidden when checks pass, with optional Settings for deliberate changes. Language persists immediately, Control+Y is assigned only if no shortcut is saved, and the app records that an explicit Accessibility registration prompt has already been shown. Actual grants are always checked with macOS.
+
+Full suite: 62 tests passed, zero failures, at `.build/simple-tests/Logs/Test/Test-Yada-2026.09.07_14-58-24-+0530.xcresult`. New tests cover mode migration without lost terminology, language persistence, detection of older/development instances, and exclusive lock release/reacquisition. The synthetic preview launched but native UI automation still failed with `Sky Computer Use native pipe closed before response`; visual acceptance remains pending. Existing OS permission entries and signed upgrade persistence remain unresolved until certificate setup/migration.

@@ -16,7 +16,7 @@ struct TermReplacement: Codable, Equatable, Identifiable {
 @MainActor @Observable
 final class CleanupSettings {
     static var defaultURL: URL { AppStorage.directory.appending(path: "CleanupSettings.json") }
-    private(set) var mode: TextMode = .raw
+    private(set) var mode: TextMode = .clean
     private(set) var replacements: [TermReplacement] = []
     private(set) var errorMessage: String?
     private var loadFailed = false
@@ -31,9 +31,11 @@ final class CleanupSettings {
             guard saved.replacements.count <= 100,
                   Set(saved.replacements.map(\.source)).count == saved.replacements.count,
                   saved.replacements.allSatisfy({ Self.valid($0) }) else { throw YadaError("Invalid replacements") }
-            mode = saved.mode
+            // Old mode preferences do not change the single everyday dictation path.
+            mode = .clean
             replacements = saved.replacements
         } catch {
+            mode = .raw
             loadFailed = true
             errorMessage = "Cleanup settings could not be read. Raw mode is active; the existing file has been left untouched."
         }

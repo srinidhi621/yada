@@ -5,6 +5,8 @@ import Observation
 
 @MainActor @Observable
 final class PermissionSetup {
+    private(set) var hasChecked = false
+    var ready: Bool { accessibility && microphone == .authorized }
     private(set) var accessibility = false
     private(set) var microphone: AVAuthorizationStatus = .notDetermined
     private(set) var requestingMicrophone = false
@@ -23,6 +25,7 @@ final class PermissionSetup {
     func refresh() {
         accessibility = readAccessibility()
         microphone = readMicrophone()
+        hasChecked = true
     }
 
     func allowMicrophone() async {

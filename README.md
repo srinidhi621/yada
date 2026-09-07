@@ -4,16 +4,16 @@
 
 **Dictate where you type, with speech processing on your Mac.**
 
-Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Optional cleanup fixes spacing and your saved terminology; Apple’s on-device model can prepare prose, bullets or an email draft for review.
+Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Dictation has one default path: preserve the recognizer’s words, tidy spacing, apply any previously saved terminology, and insert. There is no text-mode picker.
 
-**Status:** early personal-development build. The latest automated suite passes 58 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
+**Status:** early personal-development build. The latest automated suite passes 62 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
 
 ## What it does
 
 - Transcribes microphone audio with Apple’s on-device SpeechTranscriber.
 - Starts and stops from one configurable global shortcut, with menu-bar and floating-pill controls.
 - Inserts into supported active text fields, with preview recovery when the destination cannot be verified.
-- Offers Raw, Clean, Prose, Bullets and Email text modes.
+- Uses one automatic dictation path, without mode selection.
 - Keeps the last 50 finalized transcripts locally, including available raw, cleaned and formatted versions.
 - Appears in the Dock and Command–Tab and stays running when its window closes.
 
@@ -28,15 +28,16 @@ An experimental Meetings tab now records the microphone and one selected audio p
 | Installed Apple speech assets for your language | On-device transcription |
 | Microphone permission | Dictation |
 | Accessibility permission | Automatic text insertion |
-| Apple Intelligence enabled and its model ready | Optional Prose, Bullets and Email modes |
 
-Raw and Clean do not require Apple Intelligence. No API key, Python environment, inference server, simulator or Xcode predictive completion model is needed. A paid Apple Developer account is not required for local development. Public releases require Developer ID signing and notarization; see [release preparation](docs/releases.md).
+Everyday dictation does not require Apple Intelligence. No API key, Python environment, inference server, simulator or Xcode predictive completion model is needed. A paid Apple Developer account is not required for local development. Public releases require Developer ID signing and notarization; see [release preparation](docs/releases.md).
 
 Initial Swift package resolution and any missing Apple language/model assets need an internet connection. Yada has no hosted inference fallback.
 
 ## Build and launch
 
-Get the repository source, then use either Xcode or Terminal.
+For everyday testing, run `python3 scripts/package-local.py` from the repository root. It tests and builds a non-notarized DMG without a paid Apple account. Follow [local installation instructions](docs/releases.md), then launch `/Applications/Yada.app`.
+
+The Xcode and Terminal commands below are for development, using a separate development identity.
 
 ### In Xcode
 
@@ -62,13 +63,15 @@ After rebuilding, preserve any current text, quit the running Yada instance, and
 
 ## First-time setup
 
-1. In Yada’s **Setup** section, choose a recording shortcut. **Control+Y** is the current development setup, but new installations have no default binding. Choose a chord that does not conflict with another app. Fn shortcuts are rejected to leave Fn available for Wispr Flow.
-2. Select a speech language and choose **Check language**. English (India) is the initial preference; availability depends on Apple’s supported locales.
-3. If needed, choose **Download language** and wait for setup to finish. No microphone audio is captured during this download.
-4. Start a recording and grant microphone access when macOS asks. If previously denied, enable Yada under **System Settings → Privacy & Security → Microphone**.
-5. For automatic insertion, allow Yada under **System Settings → Privacy & Security → Accessibility** when prompted. Return to your text field and press the shortcut again. A missing Accessibility permission prevents that external-field recording from starting.
+1. Allow microphone and Accessibility access when completing the setup card. macOS owns these permissions; Yada checks the real grants rather than storing a substitute “enabled” flag.
+2. Yada checks the saved speech language automatically. If its assets are missing, choose Download language once.
+3. Return to your text field and use Control+Y to start and stop. Existing shortcut choices are preserved; Control+Y is assigned only when no shortcut is saved.
 
-For model formatting, also enable **Apple Intelligence** under **System Settings → Apple Intelligence & Siri**, let its setup finish, and use **Check model** in Yada. The app reports availability; it does not change these settings for you.
+The setup card disappears once microphone, Accessibility and language checks pass. Shortcut, language and saved terminology are available under Settings when you deliberately need to change them. Speech-language changes are saved immediately. Permission registration is requested only on the explicit setup button and at most once per app preference domain; subsequent clicks open settings without another automatic request.
+
+Only one normal Yada copy can run at a time. New copies activate an existing production/development copy and exit before registering a shortcut. Updated builds also share a process lock. Older builds do not contain this guard and need to be quit during migration.
+
+Ad-hoc development signatures still change when rebuilt. This can invalidate macOS permission grants even though an enabled row remains in Settings. Use one local testing installation at `/Applications/Yada.app`. Paid enrollment is deferred. Ad-hoc updates may still require permission repair; existing stale Settings rows are not removed by app preferences or the process guard. See [release setup](docs/releases.md).
 
 ## Everyday dictation
 
@@ -76,45 +79,19 @@ For model formatting, also enable **Apple Intelligence** under **System Settings
 2. Press your shortcut, such as **Control+Y**.
 3. Wait for **Listening** in the pill or **Recording** in Yada, then speak.
 4. Press the same shortcut again to stop and finalize.
-5. In Raw or Clean mode, Yada inserts into the supported destination and keeps it focused after verified insertion.
+5. Yada inserts into the supported destination and keeps it focused after verified insertion.
 
 The bottom-right pill shows microphone-driven level bars while listening. Its Stop button also finalizes; its X button cancels the recording. You can drag the pill’s background. Its position lasts until the app quits.
 
 Starting from Yada’s own window produces a preview. If insertion is unsupported, the app or cursor changed, or delivery cannot be verified, Yada keeps the text available for review and copying. It never automatically retries an uncertain insertion. Check the destination before copying again.
 
-## Text modes
+## Default text handling
 
-Choose **Text mode** in Setup before recording.
+Yada preserves line breaks, explicit quotations, backticks, fenced code and indented lines while tidying repeated horizontal spaces. Existing terminology rules remain available under Settings → Saved terminology. They are case-sensitive whole-phrase replacements and do not cascade. Original recognizer text remains available in history.
 
-| Mode | Processing | Delivery |
-| --- | --- | --- |
-| **Raw** (default) | Unchanged recognizer output | Automatic insertion into supported fields |
-| **Clean** | Repeated-space normalization and your terminology replacements | Automatic insertion into supported fields |
-| **Prose** | Cleanup, then one local model pass for faithful sentences | Review first |
-| **Bullets** | Cleanup, then one local model pass for bullet points | Review first |
-| **Email** | Cleanup, then one local model pass for an email draft | Review first; never sends email |
+Old saved text-mode choices are ignored at startup so they cannot unexpectedly open a review window or prevent insertion. Unreadable settings retain the faithful unmodified fallback and do not overwrite the old file.
 
-“Raw” means Yada does not edit the recognizer’s output. Apple’s recognizer may already normalize punctuation or omit disfluencies.
-
-### Clean and terminology
-
-Clean preserves line breaks, explicit quotations, backticks, fenced code and indented lines. These are conservative syntax rules, not general code detection. It does not delete filler words or infer spoken corrections.
-
-Open **Terminology…** to add a recognized phrase and its replacement. Rules are case-sensitive, use word boundaries, and run once without triggering other rules. They apply outside protected quotes/code. Yada does not learn replacements by monitoring what you type in other apps.
-
-### Review model output
-
-Prose, Bullets and Email use Apple’s on-device `SystemLanguageModel`, with no tools or cloud provider. Yada opens a review window when formatting starts.
-
-1. Compare the result with **Original and cleanup → Raw**.
-2. Choose **Use reviewed text**.
-3. Click the destination field and press your shortcut once to insert that text. This press does not start recording.
-
-**Cancel pending insertion** disarms that one-shot action. You can instead copy the formatted result or choose **Use unformatted text**.
-
-The model is instructed to preserve meaning, remove only obvious fillers and resolve only unambiguous spoken corrections. It can still omit or change content. Number-change warnings are review aids, not an accuracy guarantee. Check names, negation, dates, commitments and code yourself.
-
-Formatting checks model and language availability at each request. Unsupported input, refusal, context errors, cancellation and a 30-second timeout preserve unformatted text. Passages over 3,000 UTF-8 bytes are rejected rather than silently shortened.
+The experimental Apple formatting service and synthetic evaluation harness remain in the codebase, but automatic model modes and their controls have been removed from the dictation interface. The prior quotation/code failures remain documented; generation is not part of the default path.
 
 ## Application compatibility
 
@@ -129,12 +106,12 @@ Yada never sends Return. Checks and cross-process delivery are not atomic, so th
 
 ## Privacy and local storage
 
-Yada has no telemetry, analytics or cloud inference path. Microphone audio stays in memory and is not saved. The destination app controls what happens to text after insertion; dictating into a cloud-connected app does not make that app local.
+Yada has no telemetry, analytics or cloud inference path. Ordinary dictation audio stays in memory and is not saved. Meeting recordings are saved locally until deleted. The destination app controls what happens to text after insertion; dictating into a cloud-connected app does not make that app local.
 
 | Data | Location / behavior |
 | --- | --- |
 | Last 50 finalized transcripts and available text variants | `~/Library/Application Support/Yada/RecentTranscripts.json` |
-| Text mode and explicit terminology rules | `~/Library/Application Support/Yada/CleanupSettings.json` |
+| Terminology rules and legacy mode metadata | `~/Library/Application Support/Yada/CleanupSettings.json` |
 | Shortcut and speech-language preferences | macOS application preferences |
 | Destination field text | Read temporarily for insertion checks; not logged or persisted |
 

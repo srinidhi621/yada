@@ -71,23 +71,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meeting: MeetingController?
     private var showWindow: (() -> Void)?
     private let pill = RecordingPill()
+    private let instance = AppInstance()
+    private var mayConfigure = true
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard !UIValidation.isEnabled,
+              ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        do {
+            mayConfigure = try instance.acquire()
+        } catch {
+            mayConfigure = false
+            let alert = NSAlert()
+            alert.messageText = "Yada could not start"
+            alert.informativeText = SessionController.userMessage(error)
+            alert.runModal()
+        }
+        if !mayConfigure { NSApp.terminate(nil) }
+    }
 
     func configure(controller: SessionController, language: LanguageSetup, meeting: MeetingController, showWindow: @escaping () -> Void) {
         self.showWindow = showWindow
-        guard self.controller == nil else { return }
+        guard mayConfigure, self.controller == nil else { return }
         self.controller = controller
         self.meeting = meeting
-        if !UIValidation.isEnabled {
+        if !UIValidation.isEnabled && !UIValidation.isTesting {
+            if KeyboardShortcuts.getShortcut(for: .toggleDictation) == nil {
+                KeyboardShortcuts.setShortcut(.init(.y, modifiers: [.control]), for: .toggleDictation)
+            }
             KeyboardShortcuts.removeHandler(for: .toggleDictation)
             KeyboardShortcuts.onKeyDown(for: .toggleDictation) {
-                guard !meeting.busy else { return }
+                guard !meeting.busy else { showWindow(); return }
+                if !controller.busy && (language.checking || language.downloading) {
+                    showWindow()
+                    return
+                }
                 controller.handleShortcut(locale: language.locale,
                     setupBusy: language.checking || language.downloading,
                     capture: { ActiveFieldInsertion.capture() })
             }
+            checkShortcut()
         }
         observeState()
         observeMeeting()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        checkShortcut()
+    }
+
+    private func checkShortcut() {
+        guard let controller, !UIValidation.isEnabled, !UIValidation.isTesting else { return }
+        KeyboardShortcuts.enable(.toggleDictation)
+        controller.shortcutIssue = KeyboardShortcuts.isEnabled(for: .toggleDictation) ? nil :
+            "Yada could not register its global shortcut. Another app may be using it. Close the conflicting app, then return to Yada to retry."
     }
 
     private func observeState() {
@@ -162,7 +198,8 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var copyStatus = ""
     @State private var showTerms = false
-    @State private var formatStyle: TextMode = .prose
+    @State private var showSettings = false
+    private var needsSetup: Bool { (permissions.hasChecked && !permissions.ready) || (language.hasChecked && !language.installed) }
     var body: some View {
         ScrollView {
         VStack(alignment: .leading, spacing: 18) {
@@ -178,9 +215,18 @@ struct ContentView: View {
                     .foregroundStyle(controller.state == .recording ? .red : .secondary)
                     .accessibilityIdentifier("sessionStatus")
             }
-            GroupBox("Setup") {
+            HStack {
+                Text("Press \(KeyboardShortcuts.getShortcut(for: .toggleDictation)?.description ?? "Control–Y") to start and stop dictation.")
+                Spacer()
+                Button(showSettings ? "Done" : "Settings…") { showSettings.toggle() }
+            }
+            if let issue = controller.shortcutIssue {
+                Label(issue, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            }
+            if needsSetup || showSettings {
+            GroupBox(showSettings ? "Settings" : "Finish setup") {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("1. Allow microphone and text insertion").font(.headline)
+                    Text("Permissions").font(.headline)
                     HStack {
                         Label(permissions.microphone == .authorized ? "Microphone ready" : "Microphone access needed", systemImage: permissions.microphone == .authorized ? "checkmark.circle" : "mic")
                         Spacer()
@@ -203,24 +249,19 @@ struct ContentView: View {
                     if !permissions.accessibility {
                         Text("Enable Yada in Accessibility, then return here. We check again automatically. If it is already enabled, quit and reopen Yada; an older development build may need to be removed and added again.").font(.caption)
                     }
-                    Divider()
-                    Text("2. Choose your shortcut and speech language").font(.headline)
-                    KeyboardShortcuts.Recorder("Recording shortcut", name: .toggleDictation)
-                        .shortcutValidation { shortcut in
-                            if shortcut.key == .function || shortcut.modifiers.contains(.function) {
-                                return .disallow(reason: "Keep Fn available for Wispr Flow. Choose another chord.")
-                            }
-                            return .allow
-                        }.disabled(UIValidation.isEnabled)
-                    Text("Press your shortcut to start. Press it again to stop and insert at the cursor. Wispr Flow keeps Fn.").font(.caption).foregroundStyle(.secondary)
-                    Picker("Text mode", selection: Binding(get: { controller.cleanup.mode }, set: { controller.cleanup.setMode($0) })) {
-                        ForEach(TextMode.allCases) { mode in Text(mode.rawValue + (mode.requiresReview ? " · review" : "")).tag(mode) }
-                    }
-                    HStack {
-                        Text("Clean fixes spacing and your saved terms. Prose, Bullets and Email use Apple's local model and open for review.").font(.caption).foregroundStyle(.secondary)
-                        Button("Terminology…") { showTerms = true }
+                    if showSettings {
+                        Divider()
+                        KeyboardShortcuts.Recorder("Recording shortcut", name: .toggleDictation)
+                            .shortcutValidation { shortcut in
+                                if shortcut.key == .function || shortcut.modifiers.contains(.function) {
+                                    return .disallow(reason: "Keep Fn available for Wispr Flow.")
+                                }
+                                return .allow
+                            }.disabled(UIValidation.isEnabled)
+                        Button("Saved terminology…") { showTerms = true }
                     }
                     if let error = controller.cleanup.errorMessage { Text(error).font(.caption).foregroundStyle(.red) }
+                    if showSettings {
                     Picker("Speech language", selection: $language.selectedID) {
                         if !language.locales.contains(where: { $0.identifier == language.selectedID }) {
                             Text(language.selectedID).tag(language.selectedID)
@@ -229,6 +270,8 @@ struct ContentView: View {
                             Text(Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier).tag(locale.identifier)
                         }
                     }
+                    }
+                    if !language.installed || showSettings {
                     HStack {
                         Button("Check language") { Task { await language.check() } }.disabled(UIValidation.isEnabled)
                         Button("Download language") { Task { await language.download() } }
@@ -236,12 +279,10 @@ struct ContentView: View {
                     }
                     Text(language.status).font(.caption).fixedSize(horizontal: false, vertical: true)
                     if language.downloading { ProgressView(value: language.progress).accessibilityLabel("Language download progress") }
-                    Divider()
-                    Text("3. Try a short dictation").font(.headline)
-                    Text("Choose Start recording below and say ‘This is a practice sentence.’ Stop to see the result here. Then click a text field in another app and use your shortcut to start and stop dictation there.").font(.caption)
-                    Text("Apple Intelligence is optional. Raw and Clean work without it; formatted styles require review.").font(.caption).foregroundStyle(.secondary)
+                    }
                 }.padding(6)
             }.disabled(controller.busy || language.checking || language.downloading)
+            }
             Text(controller.message).fixedSize(horizontal: false, vertical: true)
             if let error = controller.history.errorMessage {
                 Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
@@ -286,39 +327,10 @@ struct ContentView: View {
                         Text(controller.cleanedText)
                     }
                 }
-                GroupBox("Local formatting · review before insertion") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(controller.modelStatus).font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            Picker("Style", selection: $formatStyle) {
-                                ForEach(TextMode.allCases.filter(\.requiresReview)) { Text($0.rawValue).tag($0) }
-                            }
-                            Button("Format") { controller.format(style: formatStyle) }.disabled(!controller.canFormat)
-                            Button("Check model") { controller.refreshModelStatus() }
-                        }
-                        if controller.state == .formatting { Button("Cancel formatting") { controller.cancelFormatting() } }
-                        if let formatted = controller.formattedText {
-                            ScrollView { Text(formatted).frame(maxWidth: .infinity, alignment: .leading) }.frame(minHeight: 70, maxHeight: 150)
-                            Text(controller.reviewWarning).font(.caption).foregroundStyle(.orange)
-                            HStack {
-                                Button("Use reviewed text") { controller.prepareReviewedInsertion(useFormatted: true) }.disabled(controller.busy)
-                                Button("Copy formatted") { copyStatus = copyLocally(formatted) }.disabled(controller.busy)
-                            }
-                        }
-                        if controller.state == .ready && !controller.readyToInsert {
-                            Button("Use unformatted text") { controller.prepareReviewedInsertion(useFormatted: false) }
-                        }
-                        if controller.readyToInsert {
-                            Text("Return to your destination and press the shortcut once to insert. No recording starts.").font(.caption)
-                            Button("Cancel pending insertion") { controller.discardReviewedInsertion() }
-                        }
-                        if let ms = controller.formattingMS { Text("Formatting: \(Int(ms)) ms").font(.caption.monospacedDigit()) }
-                    }
-                }
             }
-            Text("Ordinary dictation audio is never saved. Meetings save audio until you delete it. The last 50 finalized transcripts are saved locally; manage them in Recent transcripts. Text goes directly into supported fields. Copy is available when insertion cannot be verified. Local clipboard managers may still read or sync copied text. Raw preserves recognizer output. Clean uses your rules; model formatting always needs review.")
+            Text("Ordinary dictation audio is never saved. Meetings save audio until you delete it. The last 50 finalized transcripts are saved locally; manage them in Recent transcripts. Text goes directly into supported fields. Copy is available when insertion cannot be verified. Local clipboard managers may still read or sync copied text. Dictation preserves your words and tidies spacing. Your original text stays available in history.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if let ready = controller.readinessMS {
+            if showSettings, let ready = controller.readinessMS {
                 Text("Capture readiness: \(Int(ready)) ms" + (controller.finalizationMS.map { " · Finalization: \(Int($0)) ms" } ?? ""))
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
@@ -411,6 +423,7 @@ struct HistoryView: View {
 
 // A debug-only driver exercises the real views/controller without microphone or user history.
 enum UIValidation {
+    static var isTesting: Bool { ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil }
     static var isEnabled: Bool {
         #if DEBUG
         ProcessInfo.processInfo.arguments.contains("--ui-preview")

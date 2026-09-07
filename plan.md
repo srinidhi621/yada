@@ -8,6 +8,25 @@ Version 0.1.0 is on `main` (initial release commit `a75d04d`). It includes local
 
 The latest local build passes 58 automated tests, including the simplification and review fixes. Cleanup/formatting evidence is recorded in docs/mvp3-acceptance.md. Signing, packaging and onboarding are the next milestone; the remaining physical reliability checks stay open. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
 
+## Everyday-flow simplification, September 7
+
+The user rejected the configuration-heavy dictation UI. The default is now deterministic cleanup and direct insertion with one saved shortcut. Mode selection and model-formatting controls are removed from the main dictation flow. Setup appears only when actual permission/language checks fail or Settings is opened. Language changes persist immediately; existing shortcut and terminology choices survive.
+
+A startup guard covers production and development copies and a shared lock prevents two updated builds from owning the microphone/shortcut. The audit found both an old production-identity debug app and the development app running, each ad-hoc signed. A later process check found neither running. No valid signing certificate exists and no canonical installed release exists. Existing Accessibility rows remain OS-owned; installation consolidation and permission repair are still required. Paid certificate setup is deferred. Do not claim permission persistence has been fixed merely by saving app preferences.
+
+## Immediate priority: one installed app and reliable global dictation
+
+The follow-up audit found one running development build, a persisted Control+Y shortcut in both preference domains, and no valid signing certificate. Two Accessibility entries remain, and the user reports that the global shortcut does nothing outside Yada. The shortcut failure is unresolved; stable signing alone is not proof that it is fixed. The latest simplification suite passed 62 tests, but these do not establish physical shortcut delivery.
+
+1. Apple Developer enrollment is parked at the user's request. Build an explicitly non-notarized local testing DMG without paid credentials; do not block dictation fixes on signing.
+2. Build and validate the production identity, then install the everyday app at `/Applications/Yada.app`. Stop launching development build products for everyday testing.
+3. Retire obsolete Yada app copies and repair only Yada's obsolete Accessibility entries through supported macOS controls. Preserve transcript history, meetings and preferences. Do this after the installed replacement is ready, to avoid another permission repair cycle.
+4. Verify shortcut registration and event delivery independently of insertion permissions. Resolve any registration failure or silent busy-state handling before calling the flow complete.
+5. Verify Control+Y starts and stops dictation while Notes, TextEdit, Outlook email body and Teams compose retain focus; verify insertion without clicking the pill or sending a message.
+6. Verify quit/relaunch and an upgrade at the same installation path. Preserve settings/history and record any required permission repair: ad-hoc signing cannot promise grant retention across rebuilds. Each recipient grants permissions on their own Mac; Yada cannot grant itself access.
+
+Local packaging now passed 62 app tests and 10 tooling tests and produced a verified non-notarized DMG. Shortcut registration failures are visible and retried on activation; busy meeting/language gates bring the app forward. No permissions or app copies were removed. Physical shortcut delivery and installation/upgrade acceptance remain open; no root cause for the reported cross-app failure has been confirmed.
+
 ## Ground rules
 
 - Audio processing, future cleanup and meeting notes stay on this Mac. No hosted fallback, telemetry or cloud transcript uploads.
@@ -21,7 +40,7 @@ The latest local build passes 58 automated tests, including the simplification a
 ## When you return: test the current app
 
 1. Preserve any current text, then quit Yada using its menu-bar Quit item.
-2. In Finder, press Command+Shift+G and enter the project folder path: `/Users/srinidhi.ramanujam/code-workspace/my_projects/project-yada/.build/Build/Products/Debug/`. Open Yada.app.
+2. Install the local testing DMG following `docs/releases.md`, eject it, then open `/Applications/Yada.app`. Use this one installation for everyday testing.
 3. If macOS requests it, enable Yada under System Settings → Privacy & Security → Accessibility. Microphone permission is separate. No new library installation is needed for this step.
 4. Open a new TextEdit document and click in it. Press Control+Y, wait for Listening, speak a short non-sensitive sentence, and press Control+Y again. Do not click the pill. Confirm one insertion and no duplicate text.
 5. Repeat in an unsent Outlook email body and Teams compose box. Do not send the test message. Confirm the cursor stays in the destination after a verified insertion.

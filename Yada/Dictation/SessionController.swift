@@ -18,6 +18,7 @@ enum SessionState: String {
 
 @MainActor @Observable
 final class SessionController {
+    var shortcutIssue: String?
     private(set) var state: SessionState = .idle
     private(set) var transcript = Transcript()
     private(set) var message = "Choose a shortcut and check the speech language to begin."
