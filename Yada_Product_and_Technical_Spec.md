@@ -211,6 +211,8 @@ If Apple’s model fails the actual corpus, compare S1-mini for normalization or
 
 ### MVP 5A — Capture a meeting manually, then transcribe
 
+September 7 implementation note: the first manual capture slice is implemented with explicit process taps, separate CAF chunks, Pause/Stop, local archive management and an offline file-transcription path. Meeting audio retention is now explicitly enabled only in Meetings, superseding the no-audio default for this mode. Dictation remains unchanged. Synthetic tests pass; physical routing, module readiness, long-call transcription and crash-loss bounds remain unverified. See `docs/meeting-capture-acceptance.md`.
+
 **Workflow:** choose Record Meeting, acknowledge participant permission, capture microphone and selected system audio, stop, review a timestamped transcript, save/export locally.
 
 Use AVAudioEngine for the microphone and a Core Audio process tap for system output. Apple provides process-tap capture APIs, so a virtual audio driver is not the first dependency. Keep ScreenCaptureKit as a later alternative for actual routing failures. [S18, S19]

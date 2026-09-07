@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import AVFoundation
 import Speech
 @testable import Yada
@@ -800,5 +801,172 @@ final class PermissionSetupTests: XCTestCase {
         XCTAssertEqual(controller.outputText, "Synthetic saved text")
         XCTAssertEqual(controller.state, .ready)
         XCTAssertFalse(controller.readyToInsert)
+    }
+}
+
+@MainActor
+private final class FakeMeetingSource: MeetingAudioCapturing {
+    var continuation: AsyncThrowingStream<MeetingAudioPacket, Error>.Continuation?
+    var starts = 0
+    var stops = 0
+    func start(processID: UInt32) throws -> AsyncThrowingStream<MeetingAudioPacket, Error> {
+        starts += 1
+        let pair = AsyncThrowingStream<MeetingAudioPacket, Error>.makeStream()
+        continuation = pair.continuation
+        return pair.stream
+    }
+    func stop() { stops += 1; continuation?.finish(); continuation = nil }
+}
+
+@MainActor
+final class MeetingTests: XCTestCase {
+    private func buffer(seconds: Double = 1) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(standardFormatWithSampleRate: 8000, channels: 1)!
+        let frames = AVAudioFrameCount(seconds * 8000)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        for i in 0..<Int(frames) { buffer.floatChannelData![0][i] = Float(sin(Double(i) * 0.05)) * 0.1 }
+        return buffer
+    }
+    private func temporaryRoot() -> URL { FileManager.default.temporaryDirectory.appending(path: UUID().uuidString) }
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<2000 { if condition() { return }; try? await Task.sleep(for: .milliseconds(1)) }
+        XCTFail("Meeting condition timed out")
+    }
+
+    func testArchiveWritesSeparateBoundedChunksAndPauseGap() async throws {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let origin = mach_absolute_time()
+        let archive = try MeetingArchive(root: root, origin: origin)
+        for offset in 0..<7 {
+            for track in MeetingTrack.allCases {
+                try await archive.append(MeetingAudioPacket(buffer: buffer(), hostTime: origin + AVAudioTime.hostTime(forSeconds: Double(offset)), track: track))
+            }
+        }
+        try await archive.checkpoint(status: "paused")
+        try await archive.append(MeetingAudioPacket(buffer: buffer(), hostTime: origin + AVAudioTime.hostTime(forSeconds: 12), track: .microphone))
+        try await archive.checkpoint(status: "saved")
+        let directory = archive.directory
+        let manifest = try JSONDecoder().decode(MeetingManifest.self, from: Data(contentsOf: directory.appending(path: "manifest.json")))
+        XCTAssertEqual(manifest.status, "saved")
+        XCTAssertEqual(manifest.chunks.count, 5)
+        XCTAssertTrue(manifest.chunks.allSatisfy { $0.durationSeconds <= 5 })
+        XCTAssertEqual(manifest.chunks.last?.startSeconds, 12)
+        for chunk in manifest.chunks {
+            let file = try AVAudioFile(forReading: directory.appending(path: chunk.file))
+            XCTAssertEqual(Double(file.length) / file.fileFormat.sampleRate, chunk.durationSeconds, accuracy: 0.001)
+        }
+    }
+
+    func testCheckpointManifestSurvivesUnfinishedCurrentChunk() async throws {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let origin = mach_absolute_time()
+        let archive = try MeetingArchive(root: root, origin: origin)
+        for i in 0..<6 { try await archive.append(MeetingAudioPacket(buffer: buffer(), hostTime: origin + AVAudioTime.hostTime(forSeconds: Double(i)), track: .remote)) }
+        let manifest = try JSONDecoder().decode(MeetingManifest.self, from: Data(contentsOf: archive.directory.appending(path: "manifest.json")))
+        XCTAssertEqual(manifest.status, "recording")
+        XCTAssertEqual(manifest.chunks.count, 1)
+        XCTAssertEqual(manifest.chunks.first?.durationSeconds, 5)
+        try await archive.checkpoint(status: "interrupted")
+    }
+
+    func testConsentPermissionAndDictationGateCapture() {
+        let source = FakeMeetingSource()
+        let controller = MeetingController(root: temporaryRoot(), makeSource: { source }, microphoneAllowed: { false })
+        controller.selectedID = 1
+        controller.start(dictationBusy: false)
+        controller.consent = true
+        controller.start(dictationBusy: true)
+        controller.start(dictationBusy: false)
+        XCTAssertEqual(source.starts, 0)
+        XCTAssertFalse(controller.busy)
+        XCTAssertNil(controller.directory)
+    }
+
+    func testPauseResumeStopAndQuitReleaseBothSources() async throws {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = FakeMeetingSource()
+        let controller = MeetingController(root: root, makeSource: { source }, microphoneAllowed: { true })
+        controller.selectedID = 1; controller.consent = true
+        controller.start(dictationBusy: false)
+        XCTAssertEqual(controller.state, .recording)
+        source.continuation?.yield(MeetingAudioPacket(buffer: buffer(), hostTime: mach_absolute_time(), track: .microphone))
+        controller.pause()
+        await waitUntil { controller.state == .paused }
+        XCTAssertTrue(controller.busy)
+        controller.resume()
+        await waitUntil { controller.state == .recording }
+        XCTAssertEqual(source.starts, 2)
+        await controller.finishForQuit()
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertFalse(controller.busy)
+        XCTAssertGreaterThanOrEqual(source.stops, 2)
+        let manifest = try JSONDecoder().decode(MeetingManifest.self, from: Data(contentsOf: controller.directory!.appending(path: "manifest.json")))
+        XCTAssertEqual(manifest.status, "saved")
+        XCTAssertEqual(manifest.chunks.count, 1)
+    }
+
+    func testCaptureErrorPreservesCompletedAudioAndStops() async throws {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = FakeMeetingSource()
+        let controller = MeetingController(root: root, makeSource: { source }, microphoneAllowed: { true })
+        controller.selectedID = 1; controller.consent = true
+        controller.start(dictationBusy: false)
+        source.continuation?.yield(MeetingAudioPacket(buffer: buffer(), hostTime: mach_absolute_time(), track: .remote))
+        await waitUntil { controller.elapsed > 0 }
+        source.continuation?.finish(throwing: YadaError("Synthetic disconnect"))
+        await waitUntil { controller.state == .failed }
+        let manifest = try JSONDecoder().decode(MeetingManifest.self, from: Data(contentsOf: controller.directory!.appending(path: "manifest.json")))
+        XCTAssertEqual(manifest.status, "interrupted")
+        XCTAssertEqual(manifest.chunks.count, 1)
+        XCTAssertGreaterThan(source.stops, 0)
+    }
+
+    func testQuitDuringResumeDoesNotRestartCapture() async {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = FakeMeetingSource()
+        let controller = MeetingController(root: root, makeSource: { source }, microphoneAllowed: { true })
+        controller.selectedID = 1; controller.consent = true
+        controller.start(dictationBusy: false)
+        controller.pause()
+        await waitUntil { controller.state == .paused }
+        controller.resume()
+        await controller.finishForQuit()
+        XCTAssertEqual(controller.state, .ready)
+        XCTAssertEqual(source.starts, 1)
+    }
+
+    func testStopWhilePauseIsSavingFinalizesMeeting() async {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let source = FakeMeetingSource()
+        let controller = MeetingController(root: root, makeSource: { source }, microphoneAllowed: { true })
+        controller.selectedID = 1; controller.consent = true
+        controller.start(dictationBusy: false)
+        controller.pause(); controller.stop()
+        await waitUntil { controller.state == .ready }
+        XCTAssertFalse(controller.busy)
+    }
+
+    func testSyntheticMeetingViewRendersWithoutCapture() throws {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        let meeting = MeetingController(root: root, makeSource: { XCTFail("Rendering must not capture"); return FakeMeetingSource() }, microphoneAllowed: { false })
+        let view = NSHostingView(rootView: MeetingView(meeting: meeting, dictation: SessionController { FakeRecognition() }, language: LanguageSetup()))
+        view.frame = NSRect(x: 0, y: 0, width: 700, height: 850)
+        view.layoutSubtreeIfNeeded()
+        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        try png.write(to: repository.appending(path: ".build/meeting-preview.png"))
+        XCTAssertFalse(meeting.busy)
+    }
+
+    func testTranscriberRejectsUnsafeManifestBeforeInference() async throws {
+        let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let manifest = MeetingManifest(id: UUID(), startedAt: .now, status: "saved", chunks: [MeetingChunk(file: "../private.caf", track: .remote, startSeconds: 0, durationSeconds: 1)])
+        try JSONEncoder().encode(manifest).write(to: root.appending(path: "manifest.json"))
+        do { _ = try await MeetingTranscriber().transcribe(directory: root, locale: Locale(identifier: "en-US")); XCTFail("Unsafe path accepted") }
+        catch { XCTAssertTrue(SessionController.userMessage(error).contains("invalid audio chunk")) }
     }
 }

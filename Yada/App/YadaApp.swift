@@ -12,16 +12,17 @@ struct YadaApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var controller = makeAppController()
     @State private var language = LanguageSetup()
+    @State private var meeting = MeetingController()
     var body: some Scene {
         Window("Yada", id: "yada") {
-            MainView(controller: controller, language: language, delegate: delegate)
+            MainView(controller: controller, language: language, meeting: meeting, delegate: delegate)
         }
         .defaultSize(width: 600, height: 700)
         .windowResizability(.contentMinSize)
         MenuBarExtra {
-            MenuContent(controller: controller, language: language)
+            MenuContent(controller: controller, language: language, meeting: meeting)
         } label: {
-            StatusLabel(controller: controller)
+            StatusLabel(controller: controller, meeting: meeting)
         }
     }
 }
@@ -30,21 +31,25 @@ struct YadaApp: App {
 struct MainView: View {
     let controller: SessionController
     let language: LanguageSetup
+    let meeting: MeetingController
     let delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
     @State private var selectedTab = 0
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("Dictation", systemImage: "waveform", value: 0) {
-                ContentView(controller: controller, language: language)
+                ContentView(controller: controller, language: language, meeting: meeting)
+            }
+            Tab("Meetings", systemImage: "person.2.wave.2", value: 2) {
+                MeetingView(meeting: meeting, dictation: controller, language: language)
             }
             Tab("Recent transcripts", systemImage: "clock", value: 1) {
                 HistoryView(history: controller.history)
             }
         }
         .onAppear {
-            delegate.configure(controller: controller, language: language) {
-                selectedTab = 0
+            delegate.configure(controller: controller, language: language, meeting: meeting) {
+                selectedTab = meeting.state == .failed ? 2 : 0
                 openWindow(id: "yada")
                 NSApp.activate()
             }
@@ -54,30 +59,35 @@ struct MainView: View {
 
 struct StatusLabel: View {
     let controller: SessionController
+    let meeting: MeetingController
     var body: some View {
-        Label("Yada · \(controller.state.rawValue)", systemImage: controller.state == .recording ? "mic.fill" : "waveform")
+        Label(meeting.busy ? "Meeting · \(meeting.state.rawValue)" : "Yada · \(controller.state.rawValue)", systemImage: meeting.capturing || controller.state == .recording ? "mic.fill" : "waveform")
     }
 }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: SessionController?
+    private var meeting: MeetingController?
     private var showWindow: (() -> Void)?
     private let pill = RecordingPill()
 
-    func configure(controller: SessionController, language: LanguageSetup, showWindow: @escaping () -> Void) {
+    func configure(controller: SessionController, language: LanguageSetup, meeting: MeetingController, showWindow: @escaping () -> Void) {
         self.showWindow = showWindow
         guard self.controller == nil else { return }
         self.controller = controller
+        self.meeting = meeting
         if !UIValidation.isEnabled {
             KeyboardShortcuts.removeHandler(for: .toggleDictation)
             KeyboardShortcuts.onKeyDown(for: .toggleDictation) {
+                guard !meeting.busy else { return }
                 controller.handleShortcut(locale: language.locale,
                     setupBusy: language.checking || language.downloading,
                     capture: { ActiveFieldInsertion.capture() })
             }
         }
         observeState()
+        observeMeeting()
     }
 
     private func observeState() {
@@ -87,6 +97,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pill.update(controller: controller)
         if state == .formatting || (state == .ready && controller.shouldPresentPreview) || state == .outcomeUnknown || state == .failure { showWindow?() }
+    }
+
+    private func observeMeeting() {
+        guard let meeting else { return }
+        let state = withObservationTracking { meeting.state } onChange: {
+            Task { @MainActor [weak self] in self?.observeMeeting() }
+        }
+        if state == .failed { showWindow?() }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let meeting, meeting.busy else { return .terminateNow }
+        Task { await meeting.finishForQuit(); sender.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -99,13 +123,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct MenuContent: View {
     let controller: SessionController
     let language: LanguageSetup
+    let meeting: MeetingController
     @Environment(\.openWindow) private var openWindow
     var body: some View {
+        if meeting.busy {
+            Text("Meeting: " + meeting.state.rawValue)
+            if meeting.state == .recording { Button("Pause meeting") { meeting.pause() } }
+            if meeting.state == .paused { Button("Resume meeting") { meeting.resume() } }
+            if meeting.state == .transcribing { Button("Cancel meeting transcription") { meeting.cancelTranscription() } }
+            else { Button("Stop meeting") { meeting.stop() } }
+        }
         Text(controller.state.rawValue)
         Button("Show Yada") { openWindow(id: "yada"); NSApp.activate() }
         Button(controller.state == .recording ? "Stop and finalize" : "Start recording") {
             controller.toggle(locale: language.locale)
-        }.disabled(language.checking || language.downloading || controller.cleaningUp || [.finalizing, .formatting, .delivering].contains(controller.state))
+        }.disabled(meeting.busy || language.checking || language.downloading || controller.cleaningUp || [.finalizing, .formatting, .delivering].contains(controller.state))
         if controller.canCancel { Button("Cancel recording") { controller.cancel() } }
         Divider()
         Menu("Recent transcripts") {
@@ -125,6 +157,7 @@ struct MenuContent: View {
 struct ContentView: View {
     @Bindable var controller: SessionController
     @Bindable var language: LanguageSetup
+    let meeting: MeetingController
     @State private var permissions = PermissionSetup()
     @Environment(\.scenePhase) private var scenePhase
     @State private var copyStatus = ""
@@ -223,7 +256,7 @@ struct ContentView: View {
                     controller.toggle(locale: language.locale)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(language.checking || language.downloading || controller.cleaningUp || [.preparing, .finalizing, .formatting, .delivering].contains(controller.state))
+                .disabled(meeting.busy || language.checking || language.downloading || controller.cleaningUp || [.preparing, .finalizing, .formatting, .delivering].contains(controller.state))
                 if controller.canCancel { Button("Cancel") { controller.cancel() }.disabled(controller.cleaningUp) }
                 Spacer()
             }
@@ -283,7 +316,7 @@ struct ContentView: View {
                     }
                 }
             }
-            Text("Audio is never saved. The last 50 finalized transcripts are saved locally; manage them in Recent transcripts. Text goes directly into supported fields. Copy is available when insertion cannot be verified. Local clipboard managers may still read or sync copied text. Raw preserves recognizer output. Clean uses your rules; model formatting always needs review.")
+            Text("Ordinary dictation audio is never saved. Meetings save audio until you delete it. The last 50 finalized transcripts are saved locally; manage them in Recent transcripts. Text goes directly into supported fields. Copy is available when insertion cannot be verified. Local clipboard managers may still read or sync copied text. Raw preserves recognizer output. Clean uses your rules; model formatting always needs review.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let ready = controller.readinessMS {
                 Text("Capture readiness: \(Int(ready)) ms" + (controller.finalizationMS.map { " · Finalization: \(Int($0)) ms" } ?? ""))

@@ -11,4 +11,5 @@
 <key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 <key>LSUIElement</key><false/>
 <key>NSMicrophoneUsageDescription</key><string>Yada uses your microphone only when you start local dictation. Audio is transcribed on this Mac.</string>
+<key>NSAudioCaptureUsageDescription</key><string>Yada records audio from the meeting process you select, only when you start meeting recording. Audio stays on this Mac.</string>
 </dict></plist>

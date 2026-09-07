@@ -56,3 +56,9 @@ Debug now uses `com.srinidhi621.yada.dev` and the separate `Yada Development` Ap
 Run `python3 -m unittest discover -s scripts -p test_release.py` for credential-free release boundary tests. Follow docs/releases.md for actual signing/notarization; mocked tests cannot close those gates. No Apple submission or GitHub publishing is included in verification.
 
 Run `python3 scripts/evaluate-formatting.py` only for its fixed synthetic corpus. It compiles production LocalFormatter and writes results under `.build/formatting-evaluation/`. Manually assess meaning against every input; successful generation and unchanged numbers are not semantic proof. See docs/formatting-evaluation-2026-09-07.md for observed failures and the open quality gate.
+
+## Manual meeting capture first slice
+
+Read docs/meeting-capture-acceptance.md before running meeting work. Build/test with `-derivedDataPath .build/meeting-tests` to preserve the user's running app. MeetingTests use generated PCM and fake sources with isolated temporary stores, covering chunk files/manifests, pause gaps, errors, consent/permission gates and stop/quit races. The file probe in that document calls production archive/transcription on synthetic speech without microphone access; unavailable assets are a failed probe, not permission to download.
+
+Never invoke live meeting capture, change System Audio Recording/Microphone permissions, play audio, read the real Meetings directory, or inspect personal recordings merely to verify code. The user grants permissions and performs a consented short routing test, then the long-call/crash matrix. Only synthetic temporary files or an explicitly authorized recording may be used for agent-driven analysis. Meeting mode intentionally saves audio; dictation does not. Do not claim five-second crash-loss or successful live transcription based on synthetic archive tests.

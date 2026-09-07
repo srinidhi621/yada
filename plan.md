@@ -6,7 +6,7 @@ Updated: September 7, 2026. This is the delivery checklist; `Yada_Product_and_Te
 
 Version 0.1.0 is on `main` (initial release commit `a75d04d`). It includes local Apple transcription, a configurable start/stop shortcut (currently Control+Y), Dock and menu-bar access, a small recording pill, local history of 50 transcripts, and automatic insertion. Native accessible fields use direct selected-text writes. Installed Outlook and Teams use a guarded paste path that leaves the transcript on the local clipboard. No message is sent automatically.
 
-The latest local build passes 49 automated tests, including the simplification and review fixes. Cleanup/formatting evidence is recorded in docs/mvp3-acceptance.md. Signing, packaging and onboarding are the next milestone; the remaining physical reliability checks stay open. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
+The latest local build passes 58 automated tests, including the simplification and review fixes. Cleanup/formatting evidence is recorded in docs/mvp3-acceptance.md. Signing, packaging and onboarding are the next milestone; the remaining physical reliability checks stay open. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
 
 ## Ground rules
 
@@ -90,13 +90,17 @@ After the three preparation tasks: complete certificate enrollment/setup; verify
 
 Gate: verified fresh install and signed upgrade with no lost data or repeated permission repair under normal conditions. Stable signing does not bypass the initial macOS permission grant. Tooling-only checks cannot establish notarization or physical onboarding success.
 
-### 5. Record and transcribe a meeting manually
+### 5. Record and transcribe a meeting manually: first slice implemented, physical proof pending
 
 1. Add a separate Record Meeting flow with explicit start, participant permission and visible pause/stop.
 2. Capture microphone and selected system/process audio as separate timestamped tracks. Start with headphones and a controlled test call.
 3. Save recoverable local chunks plus a manifest; target at most five seconds of crash loss and test that claim.
 4. Transcribe after stop before attempting live meeting transcription. Mark missing intervals explicitly.
 5. Support local transcript export and deletion of all session artifacts.
+
+First-slice evidence: explicit Core Audio process capture plus microphone, separate bounded CAF chunks/manifest, Pause/Resume/Stop/quit recovery, local saved-session transcription and deletion/export controls are implemented. Full suite passes 58 tests using synthetic PCM/fake capture. File transcription stopped at the module readiness guard despite installed locales being listed; no downloads or live capture were performed. See `docs/meeting-capture-acceptance.md`.
+
+Next: user-granted capture permissions and a short synthetic/consented routing test; resolve file-transcription readiness in the app; evaluate chunk-boundary speech and timestamp alignment. Do not claim the target five-second crash-loss window or long-call compatibility until measured.
 
 Gate: consented 30 to 60 minute call, both tracks, disconnect recovery, tested crash-loss limit and accurate interval coverage. The user must grant system-audio permissions. No driver or cloud service is assumed necessary; verify native capture first.
 

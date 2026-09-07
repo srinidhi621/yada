@@ -6,7 +6,7 @@
 
 Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Optional cleanup fixes spacing and your saved terminology; Apple’s on-device model can prepare prose, bullets or an email draft for review.
 
-**Status:** early personal-development build. The latest automated suite passes 49 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
+**Status:** early personal-development build. The latest automated suite passes 58 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
 
 ## What it does
 
@@ -17,7 +17,7 @@ Yada is a native macOS dictation app. Press your shortcut, speak, and press it a
 - Keeps the last 50 finalized transcripts locally, including available raw, cleaned and formatted versions.
 - Appears in the Dock and Command–Tab and stays running when its window closes.
 
-Yada does not record system audio, capture meetings, identify speakers or generate meeting notes yet. It does not send messages, submit forms or execute dictated commands.
+An experimental Meetings tab now records the microphone and one selected audio process locally, with Pause/Stop and saved-file transcription. Live meeting routing and successful file transcription still need acceptance testing. Yada does not identify speakers or generate meeting notes yet. It does not send messages, submit forms or execute dictated commands.
 
 ## Requirements
 
@@ -195,3 +195,9 @@ The Setup panel shows microphone and Accessibility status, opens the relevant se
 Release tooling and nine synthetic tooling tests are available in `scripts/release.py` and `scripts/test_release.py`. No signed/notarized installer has been produced yet. See [release instructions](docs/releases.md) for the certificate and fresh-install/upgrade gates.
 
 The [18-case local formatting evaluation](docs/formatting-evaluation-2026-09-07.md) found failures with quotations and code. Model output still requires review; its semantic acceptance gate remains open.
+
+## Experimental meeting recorder
+
+The Meetings tab adds explicit, consented recording of a selected audio process plus your microphone. Unlike ordinary dictation, meeting audio is saved locally until you delete it. Use headphones; muting in Teams does not mute Yada. Pause releases both capture sources.
+
+Saved sessions contain separate CAF tracks and a manifest, with optional Markdown transcription after Stop. The current transcription path handles short chunks independently and can lose or repeat boundary words. Do not treat it as verified long-meeting transcription yet. See [meeting acceptance and launch instructions](docs/meeting-capture-acceptance.md) for the required permissions, known readiness blocker and synthetic test evidence.
