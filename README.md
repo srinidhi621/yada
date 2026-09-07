@@ -6,7 +6,7 @@
 
 Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Dictation has one default path: preserve the recognizer’s words, tidy spacing, apply any previously saved terminology, and insert. There is no text-mode picker.
 
-**Status:** early personal-development build. The latest automated suite passes 62 tests. Live compatibility varies by editor, and model quality still needs evaluation. There is no packaged, notarized installer yet. See [verification and limitations](#verification-and-limitations).
+**Status:** early personal-development build. Progress is on `main` through `cb8c584`. The latest checks passed 62 app tests and 10 tooling tests, and a non-notarized local testing DMG has been built and verified. Installed-app Control-Y and cross-app insertion remain unverified. Paid Apple Developer enrollment is deferred. See [verification and limitations](#verification-and-limitations).
 
 ## What it does
 
@@ -156,7 +156,7 @@ Yada uses Swift 6, SwiftUI/AppKit, AVAudioEngine, SpeechAnalyzer/SpeechTranscrib
 | `Yada/Text/` | Cleanup, terminology and local formatting |
 | `YadaTests/` | Synthetic regression tests |
 
-The next priority is physical acceptance of everyday dictation and reviewed formatting. Packaging, meeting capture, speaker labels and grounded meeting notes follow as separate steps.
+The next priority is installing one everyday copy and testing Control-Y and insertion in TextEdit, Notes, Outlook and Teams. Local packaging and the first meeting-recording slice are implemented. Live meeting acceptance, speaker labels and grounded meeting notes remain pending. Model-formatting controls are removed from the everyday UI.
 
 - [Build plan](plan.md): ordered work and instructions for resuming testing.
 - [Product and technical specification](Yada_Product_and_Technical_Spec.md): design decisions and future scope.
@@ -169,7 +169,7 @@ Debug builds now appear as **Yada Development** (`com.srinidhi621.yada.dev`) and
 
 The Setup panel shows microphone and Accessibility status, opens the relevant settings on request, and checks permissions again when you return. Shortcuts no longer trigger repeated system permission dialogs. The existing installed/running app is not replaced by these source changes.
 
-Release tooling and nine synthetic tooling tests are available in `scripts/release.py` and `scripts/test_release.py`. No signed/notarized installer has been produced yet. See [release instructions](docs/releases.md) for the certificate and fresh-install/upgrade gates.
+The local package workflow is `scripts/package-local.py`; the optional paid-signing workflow remains in `scripts/release.py`. Ten tooling tests cover both paths. A non-notarized testing DMG has been produced; no notarized installer or GitHub release artifact has been published. See [installation instructions](docs/releases.md).
 
 The [18-case local formatting evaluation](docs/formatting-evaluation-2026-09-07.md) found failures with quotations and code. Model output still requires review; its semantic acceptance gate remains open.
 

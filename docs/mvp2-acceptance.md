@@ -25,3 +25,11 @@ The Microsoft path still requires readable text and a readable selection. It nev
 After the plan commit, the local build distinguishes absent/non-text focus, protected or disabled fields, unsupported direct insertion, unreadable field text, missing selection and invalid selection. These reasons appear in the existing preview message; no new permission, per-app setting, logging or retained destination text was added.
 
 The full test command above passed 29 tests with zero failures. Result: `.build/Logs/Test/Test-Yada-2026.09.06_02-46-17-+0530.xcresult`. Added production-policy checks cover Microsoft paste rejection for protected/disabled/non-text fields, normal Microsoft paste eligibility, and distinct native unsupported-field behavior. Physical shortcut and Office acceptance remain pending.
+
+## September 7 installed-app follow-up
+
+Progress is on `main` in `cb8c584`. The user reported that Control-Y does nothing outside Yada and that two Accessibility entries remain. The later audit found one running process and the correct saved Control-Y shortcut; the root cause of the global-key failure has not been confirmed.
+
+The app now checks shortcut registration, shows failure feedback and retries registration on activation. Meeting/language busy gates bring Yada forward instead of silently ignoring a start request. The simplified app and local package passed 62 automated app tests. These changes have not yet demonstrated working global event delivery on the installed app.
+
+Next session: install the local DMG at `/Applications/Yada.app`, complete user-managed permission repair if needed, then test Control-Y start/stop in TextEdit, Notes, Outlook email body and Teams compose. Follow with quit/relaunch and same-path upgrade checks. Do not mark compatibility or permission persistence passed until observed. No permission reset or deletion of user data was performed.

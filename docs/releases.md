@@ -85,7 +85,7 @@ Existing ad-hoc users may need a one-time permission repair when moving to the s
 
 ## Current evidence
 
-The tooling's nine isolated tests cover certificate/team selection, metadata rejection, signed entitlement validation, failure gates, and notarization result handling. They use mocked signing/notarization commands and never upload artifacts. On this development Mac, preflight remains blocked by the absence of a valid Developer ID Application identity. Signed packaging, notarization and fresh-install/upgrade acceptance await account setup. No ad-hoc distributable was produced.
+The tooling's nine isolated tests cover certificate/team selection, metadata rejection, signed entitlement validation, failure gates, and notarization result handling. They use mocked signing/notarization commands and never upload artifacts. On this development Mac, preflight remains blocked by the absence of a valid Developer ID Application identity. Developer ID packaging and notarization are deferred. The credential-free local testing package below has been produced; its installation and upgrade checks remain pending.
 
 An isolated local-only Release smoke build also passed with hardened runtime and the microphone entitlement, using ad-hoc signing solely for compilation validation. This is not a distributable release and does not verify Developer ID signing, timestamping, notarization or Gatekeeper acceptance. Final Debug metadata is `com.srinidhi621.yada.dev` / `Yada Development`; Release is `com.srinidhi621.yada` / `Yada`.
 
@@ -96,3 +96,5 @@ Updated app builds refuse a second production/development instance before regist
 ### Local package evidence, September 7
 
 `package-local.py` completed: 62 app tests passed, Release built, app signature verification passed, and `hdiutil verify` accepted the generated DMG. Ten Python tooling tests passed. The artifact is non-notarized. No installed-app launch, cross-app dictation or permission persistence was established by these checks.
+
+Source and documentation for the local workflow were pushed to `main` in `cb8c584`. The generated DMG remains local at `.build/local-packages/0.1.0-1-sy9tj63b/Yada-0.1.0-1-arm64-local.dmg`; it is not stored in Git. Testing is paused until the next user session. Start with the installation steps above and the ordered checklist in `plan.md`.

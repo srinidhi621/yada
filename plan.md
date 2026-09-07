@@ -6,7 +6,9 @@ Updated: September 7, 2026. This is the delivery checklist; `Yada_Product_and_Te
 
 Version 0.1.0 is on `main` (initial release commit `a75d04d`). It includes local Apple transcription, a configurable start/stop shortcut (currently Control+Y), Dock and menu-bar access, a small recording pill, local history of 50 transcripts, and automatic insertion. Native accessible fields use direct selected-text writes. Installed Outlook and Teams use a guarded paste path that leaves the transcript on the local clipboard. No message is sent automatically.
 
-The latest local build passes 58 automated tests, including the simplification and review fixes. Cleanup/formatting evidence is recorded in docs/mvp3-acceptance.md. Signing, packaging and onboarding are the next milestone; the remaining physical reliability checks stay open. The user has confirmed transcription and insertion through the pill in TextEdit and other native apps on the previous build. The revised keyboard stop and Microsoft insertion path still need physical testing. Do not mark that compatibility work complete based on the unit tests.
+Implementation progress is pushed to `main` through `cb8c584` (September 7): simplified dictation setup, single-instance protection, shortcut registration feedback, and a non-notarized local DMG workflow. The current build passed 62 app tests and 10 Python tooling tests. Release compilation, app signature verification and DMG verification passed. Apple Developer enrollment and notarization are deferred at the user's request.
+
+The next milestone is installed-app reliability. Control-Y outside Yada, insertion in Notes/TextEdit/Outlook/Teams, duplicate Accessibility cleanup and permission retention have not passed physical acceptance. Testing resumes with the checklist below. The experimental meeting slice is implemented, but live routing and successful file transcription remain unverified.
 
 ## Everyday-flow simplification, September 7
 
@@ -43,7 +45,7 @@ Local packaging now passed 62 app tests and 10 tooling tests and produced a veri
 2. Install the local testing DMG following `docs/releases.md`, eject it, then open `/Applications/Yada.app`. Use this one installation for everyday testing.
 3. If macOS requests it, enable Yada under System Settings → Privacy & Security → Accessibility. Microphone permission is separate. No new library installation is needed for this step.
 4. Open a new TextEdit document and click in it. Press Control+Y, wait for Listening, speak a short non-sensitive sentence, and press Control+Y again. Do not click the pill. Confirm one insertion and no duplicate text.
-5. Repeat in an unsent Outlook email body and Teams compose box. Do not send the test message. Confirm the cursor stays in the destination after a verified insertion.
+5. Repeat in a new Apple Notes note, an unsent Outlook email body and a Teams compose box. Do not send the test message. Confirm the cursor stays in the destination after a verified insertion.
 6. Try replacing selected text, Undo, cancelling, and moving the cursor or switching apps during recording. The latter cases should fall back rather than insert into the wrong destination.
 7. If something fails, report the app/version, field type, action and exact Yada status message. Do not include private text. Record numeric timings from Yada if useful.
 8. Use `docs/mvp2-acceptance.md` for the full 20-trial-per-surface gate. Delete only your synthetic test drafts afterward.
@@ -62,19 +64,19 @@ Files: `Yada/Delivery/ActiveFieldInsertion.swift`, controller/UI only where need
 
 Gate: no wrong-target insertion, duplicate retry, unintended submission or command execution; honest recovery for unsupported fields. Physical tests remain pending until actually run. Steps 1.1 and 1.2 are implemented; Step 1.3 passes all 29 tests. See the local follow-on section in docs/mvp2-acceptance.md. The user has authorized publishing these implementation changes to main. Steps 1.4 and 1.5 still require physical acceptance.
 
-### 2. Add conservative, optional cleanup: implemented locally, acceptance in progress
+### 2. Conservative cleanup: implemented, default flow simplified
 
-1. Create one deterministic transformation path after finalization and before delivery, with Raw as the default/bypass.
+1. Create one deterministic transformation path after finalization and before delivery, with deterministic cleanup as the default and the original preserved.
 2. Start with whitespace normalization. Add disfluency rules only with positive and counterexample fixtures; do not broadly delete words such as “like” or “well.”
 3. Add an explicit user-managed terminology replacement list with exact phrase boundaries. Do not infer corrections by observing other apps.
 4. Preserve raw and cleaned text, transformation version, and access to the original in history. Migrate existing history without data loss.
-5. Add the smallest Raw/Clean control and test it through the same dictation lifecycle.
+5. Use one automatic cleanup path without a text-mode picker and test it through the same dictation lifecycle.
 
-Current implementation: Raw/Clean mode, whitespace and exact terminology rules, preserved history variants, and settings validation. No deterministic filler deletion is enabled. See docs/mvp3-acceptance.md.
+Current implementation: automatic whitespace and exact terminology rules, preserved history variants, and settings validation. Mode selection has been removed from the everyday UI. No deterministic filler deletion is enabled. See docs/mvp3-acceptance.md.
 
 Gate: numbers, negation, dates, names, quotations and code survive; already-clean text stays substantively unchanged; cancellation and insertion checks still pass. No model download is needed.
 
-### 3. Offer local formatting with review: implemented, broader evaluation pending
+### 3. Local model formatting: implementation retained, UI deferred
 
 1. Check the installed Apple on-device model's availability before adding inference; record any user setup needed.
 2. Implement one bounded model pass for faithful prose, bullets or email draft. Give it no tools or external access.
@@ -82,32 +84,31 @@ Gate: numbers, negation, dates, names, quotations and code survive; already-clea
 4. Handle timeout, unavailable model, refusal and invalid output by retaining faithful text with a clear reason.
 5. Evaluate synthetic fixtures for meaning, numbers, commitments and instruction-like transcript text. Measure latency locally.
 
-Current implementation: explicit Apple on-device model, three review styles, cancellation/deadline, preserved originals, and one-shot reviewed insertion. Apple Intelligence now reports available. Production LocalFormatter passed one synthetic English (US) smoke check; English (India) was rejected by the framework locale check. Broader semantic quality and interactive UI acceptance remain pending; unit tests cannot close those gates.
+The formatter implementation and tests remain, but model-formatting controls are removed from the everyday UI. Apple Intelligence reported available; English (US) worked in the synthetic probe and English (India) was rejected by the framework locale check. The 18-case evaluation found five semantic failures and one attribution concern, with median latency 406 ms. Do not restore automatic model output or claim semantic acceptance. See `docs/formatting-evaluation-2026-09-07.md`.
 
 Gate: no unapproved factual or commitment changes in the critical evaluation set. Compare one alternative local model only if Apple fails the measured workload; review disk, memory and download requirements first.
 
-### 4. Signing, packaging and onboarding: implementation prepared, release acceptance pending
+### 4. Local packaging and onboarding: package built, installation acceptance pending
 
-Outcome: users download a signed, notarized Yada DMG from GitHub Releases, install it in Applications and complete a short guided setup. Xcode is not required for users of the packaged app. Normal upgrades should retain permissions, settings and history.
+Outcome: install one everyday copy at `/Applications/Yada.app` and complete the required macOS setup. A paid Apple account is not a prerequisite for this milestone.
 
-1. Prepare a local release script with explicit version, bundle identity and signing checks. Build and test before packaging; stop clearly when credentials are missing. Do not present an ad-hoc build as a distributable release.
-2. Complete Apple Developer enrollment and create a Developer ID Application certificate. The user handles payment, authentication and account agreements. Keep private keys and notarization credentials outside Git.
-3. Keep the everyday installed app at `/Applications/Yada.app` with a consistent Developer ID identity and bundle identifier. Give development builds a separate identity and local data location so tests do not disturb the everyday app. Preserve access to existing history during the transition.
-4. Configure release signing, hardened runtime and required entitlements. Submit to Apple's notary service, attach its ticket, validate the signature and Gatekeeper assessment, and package the DMG. Actual submission waits for credentials and authorization.
-5. Implement first-run setup for microphone access, Accessibility access, speech assets and a synthetic practice field. Recheck permission when the app becomes active; stop repeated automatic permission dialogs. Explain recovery when macOS does not recognize a grant. Keep Apple Intelligence optional and report locale support clearly.
-6. Verify fresh installation on another supported Mac and an upgrade between two signed releases. Check permission persistence, history/settings compatibility, quit/relaunch, and text insertion without sending messages.
-7. Prepare release notes, supported hardware/macOS requirements and download instructions. Publish the signed artifact to GitHub Releases only when authorized. Automatic updates and login startup are outside this milestone.
+Completed:
 
-Independent work while enrollment is pending: implement and test the credential-free release preflight/package tooling, implement onboarding state and regression coverage, and expand the synthetic Apple formatting evaluation with per-case latency and meaning checks. Use isolated build output and in-memory or temporary stores; do not restart the user's app, record audio or read private history.
+- `scripts/package-local.py` runs tests, builds Release with the production bundle identifier and ad-hoc signature, verifies the app, and creates a non-notarized DMG with an Applications shortcut and installation instructions.
+- The local package passed 62 app tests, Release compilation, signature verification and `hdiutil verify`. Ten Python tooling tests passed. No artifact was uploaded.
+- Setup uses real permission checks; language and shortcut preferences persist. A shared lock prevents two updated normal builds from running together. Shortcut registration failures are visible and retried on app activation.
+- `docs/releases.md` covers installation, supported per-app Gatekeeper approval and user-managed repair of obsolete Yada Accessibility entries without deleting history or recordings.
 
+Next:
 
-Implemented locally on September 7: guided permission status/actions with activation refresh and no automatic shortcut pop-ups; separate Development identity/storage; release preflight, build/sign/package and explicit notarize commands; nine tooling tests. App suite passes 49 tests. No valid signing identity exists on this Mac, so actual signing/notarization/DMG creation remain unrun. Native UI automation still fails before inspection; onboarding visual acceptance remains pending. See `docs/releases.md`.
+1. Install the DMG and launch only `/Applications/Yada.app` for everyday testing.
+2. Complete the Control-Y and insertion matrix, starting with TextEdit, then Notes, Outlook and Teams.
+3. Test quit/relaunch, then replacement at the same path. Record retained settings/history and any permission repair required across ad-hoc updates.
+4. After local acceptance, test installation on a second supported Mac before sharing more widely. Publishing a downloadable GitHub release requires separate authorization.
 
-Synthetic evaluation completed: 18 production formatter requests, median 406 ms. Five semantic failures and one attribution concern were found; the critical quality gate failed. See `docs/formatting-evaluation-2026-09-07.md`. The next model task is to handle protected quotations/code faithfully and repeat the evaluation before expanding use. Automatic generated-text delivery remains prohibited.
+Paid enrollment, Developer ID signing and notarization are parked. The optional `scripts/release.py` workflow remains available for later. Ad-hoc packaging does not establish Apple-verified publisher identity or guarantee permission retention across rebuilds. Automatic updates and login startup remain outside this milestone.
 
-After the three preparation tasks: complete certificate enrollment/setup; verify actual signed/notarized packaging; test fresh installation and signed upgrades; finish the physical dictation/insertion matrix; address formatting evaluation failures; then authorize and publish the first downloadable release. Later product stages 5 through 8 remain pending and are not part of release tooling.
-
-Gate: verified fresh install and signed upgrade with no lost data or repeated permission repair under normal conditions. Stable signing does not bypass the initial macOS permission grant. Tooling-only checks cannot establish notarization or physical onboarding success.
+Gate: physical installation and dictation checks pass with no wrong-target insertion, lost data or silent shortcut failure. Automated tests alone cannot close this gate.
 
 ### 5. Record and transcribe a meeting manually: first slice implemented, physical proof pending
 
