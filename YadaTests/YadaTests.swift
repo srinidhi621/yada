@@ -447,7 +447,7 @@ final class InsertionTests: XCTestCase {
             XCTAssertEqual(FieldDelivery.choose(bundleID: app, selectedTextSettable: true), .paste)
         }
         XCTAssertEqual(FieldDelivery.choose(bundleID: "com.apple.TextEdit", selectedTextSettable: true), .selectedText)
-        XCTAssertNil(FieldDelivery.choose(bundleID: "unknown", selectedTextSettable: false))
+        XCTAssertEqual(FieldDelivery.choose(bundleID: "unknown", selectedTextSettable: false), .paste)
     }
 
     func testMicrosoftPasteCannotBypassSecureDisabledOrNonTextFields() {
@@ -459,8 +459,9 @@ final class InsertionTests: XCTestCase {
         XCTAssertEqual(FieldDelivery.assess(bundleID: bundle, role: "AXTextArea", subrole: nil, enabled: true, selectedTextSettable: false), .success(.paste))
     }
 
-    func testUnsupportedNativeEditorHasDistinctFailureFromNonTextControl() {
-        XCTAssertEqual(FieldDelivery.assess(bundleID: "native.editor", role: "AXTextArea", subrole: nil, enabled: true, selectedTextSettable: false), .failure(.unsupported))
+    func testNonWritableTextEditorUsesPasteButNonTextControlIsRejected() {
+        XCTAssertEqual(FieldDelivery.assess(bundleID: "web.editor", role: "AXTextArea", subrole: nil, enabled: true, selectedTextSettable: false), .success(.paste))
+        XCTAssertEqual(FieldDelivery.assess(bundleID: "web.editor", role: "AXButton", subrole: nil, enabled: true, selectedTextSettable: false), .failure(.notText))
         XCTAssertEqual(FieldDelivery.assess(bundleID: "native.editor", role: "AXTextArea", subrole: nil, enabled: nil, selectedTextSettable: true), .success(.selectedText))
     }
 

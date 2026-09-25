@@ -83,7 +83,7 @@ Completed:
 Next:
 
 1. Install the DMG and launch only `/Applications/Yada.app` for everyday testing.
-2. Complete the Control-Y and insertion matrix, starting with TextEdit, then Notes, Outlook and Teams.
+2. TextEdit and Notes have user-confirmed dictation. Retest the updated focus and paste path in Outlook, Teams and Codex, then complete the Control-Y and insertion matrix across those editors.
 3. Test quit/relaunch, then replacement at the same path. Record retained settings/history and any permission repair required across ad-hoc updates.
 4. After local acceptance, test installation on a second supported Mac before sharing more widely. Publishing a downloadable GitHub release requires separate authorization.
 

@@ -6,7 +6,7 @@
 
 Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Dictation has one default path: preserve the recognizer’s words, tidy spacing, apply any previously saved terminology, and insert. There is no text-mode picker.
 
-**Status:** early personal-development build, not a completed product. On September 25, 2026, Xcode passed all 63 synthetic app tests after a shortcut lifecycle fix; the 10 tooling tests also passed. One verified local testing app is ready at `.build/ready-to-install/Yada.app`, but installation into `/Applications` was denied in this workspace. Control+Y from another app, real speech, cross-app insertion and permissions across upgrades still need physical acceptance. Do not share this as a finished dictation app. See [verification and limitations](#verification-and-limitations) and the [delivery plan](plan.md).
+**Status:** early personal-development build, not a completed product. On September 25, 2026, Xcode passed all 63 synthetic app tests after shortcut and editor-focus fixes; the 10 tooling tests also passed. The user confirmed real Control+Y dictation in Yada, Notes and TextEdit. Outlook, Teams and Codex insertion failed at focused-field lookup; an updated local testing app is ready at `.build/ready-to-install/Yada.app` for retesting. Cross-app insertion and permissions across upgrades remain open. Do not share this as a finished dictation app. See [verification and limitations](#verification-and-limitations) and the [delivery plan](plan.md).
 
 ## What it does
 
@@ -98,11 +98,11 @@ The experimental Apple formatting service and synthetic evaluation harness remai
 Automatic insertion depends on the text field, not just the app name. A field must expose readable text and cursor/selection information through macOS Accessibility.
 
 - **Native accessible editors:** Yada replaces the selected text directly when that operation is supported. This path does not change the clipboard.
-- **Installed Outlook and Teams:** Yada uses a guarded Command+V event sent to the captured process. It places the transcript on the current-host-only clipboard and leaves it there so a delayed paste can read it.
+- **Installed Outlook and Teams, plus text editors without direct Accessibility writes:** Yada uses a guarded Command+V event sent to the captured process. It places the transcript on the current-host-only clipboard and leaves it there so a delayed paste can read it. This path still requires an accessible focused text field, its text and selection.
 - **Unsupported or changed destinations:** Yada explains the failure and returns a preview.
 - **Password fields, Secure Input and known terminal apps:** automatic insertion is excluded.
 
-Yada never sends Return. Checks and cross-process delivery are not atomic, so they cannot eliminate every focus race. The current Microsoft paste path and physical shortcut behavior still require acceptance testing; they are not a promise of universal compatibility.
+Yada never sends Return. Checks and cross-process delivery are not atomic, so they cannot eliminate every focus race. The updated paste path still requires physical acceptance in Outlook, Teams and Codex; it is not a promise of universal compatibility.
 
 ## Privacy and local storage
 
@@ -130,7 +130,7 @@ xcodebuild -project Yada.xcodeproj -scheme Yada \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test
 ```
 
-**Current automated result, September 25, 2026:** 63 app tests passed in Xcode on an Apple Silicon Mac running macOS 26.7, and 10 Python tooling tests passed. The app suite covers transcript finalization, cancellation, insertion eligibility, history persistence, cleanup rules, permission setup and meeting capture with fake sources. The model timeout regression deliberately takes 30 seconds. Xcode built the updated Release app; its ad-hoc hardened-runtime signature and microphone entitlement were verified, and a ZIP archive passed an integrity check. DMG creation and installation were denied by the local environment, so physical dictation remains unverified.
+**Current automated result, September 25, 2026:** 63 app tests passed in Xcode on an Apple Silicon Mac running macOS 26.7, and 10 Python tooling tests passed. The app suite covers transcript finalization, cancellation, insertion eligibility, history persistence, cleanup rules, permission setup and meeting capture with fake sources. The model timeout regression deliberately takes 30 seconds. Xcode built the latest Release app; its ad-hoc hardened-runtime signature and microphone entitlement were verified. The user confirmed live dictation in Yada, Notes and TextEdit; Outlook, Teams and Codex must be retested with the updated build.
 
 Tests use synthetic inputs. They do not establish real microphone quality, offline behavior, application compatibility or model fidelity. Native UI automation was unavailable during the latest formatting checks. A later synthetic Apple model evaluation found semantic failures, so model formatting remains outside the everyday dictation flow.
 
@@ -156,7 +156,7 @@ Yada uses Swift 6, SwiftUI/AppKit, AVAudioEngine, SpeechAnalyzer/SpeechTranscrib
 | `Yada/Text/` | Cleanup, terminology and local formatting |
 | `YadaTests/` | Synthetic regression tests |
 
-The next priority is installing one everyday copy and testing Control+Y and insertion in TextEdit, Notes, Outlook and Teams. Then verify relaunch, upgrade, offline speech and permission retention on this Mac and a second supported Mac. Local packaging and the first meeting-recording slice are implemented; meeting acceptance, speaker labels and grounded notes remain separate future work.
+The next priority is testing the updated build's Control+Y insertion in Outlook, Teams and Codex, then completing the wider app matrix. After that, verify relaunch, upgrade, offline speech and permission retention on this Mac and a second supported Mac. Local packaging and the first meeting-recording slice are implemented; meeting acceptance, speaker labels and grounded notes remain separate future work.
 
 - [Build plan](plan.md): ordered work and instructions for resuming testing.
 - [Product and technical specification](Yada_Product_and_Technical_Spec.md): design decisions and future scope.

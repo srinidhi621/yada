@@ -45,7 +45,6 @@ enum FieldCaptureIssue: String, Error {
     case notText = "The focused control is not a supported text field. Click inside the message or document body before starting dictation. This transcript will stay in Yada."
     case secure = "This is a protected text field. Yada will keep the transcript in preview."
     case disabled = "The destination field is disabled. This transcript will stay in Yada."
-    case unsupported = "This editor does not allow direct text insertion. Your transcript will be available in Yada to copy."
     case unreadableText = "This editor does not expose its text for insertion checks. Your transcript will be available in Yada to copy."
     case unreadableSelection = "This editor does not expose its cursor or selection. Your transcript will be available in Yada to copy."
     case invalidSelection = "The editor returned a selection outside its current text. Your transcript will stay in Yada; try again after the editor finishes updating."
@@ -54,12 +53,12 @@ enum FieldCaptureIssue: String, Error {
 enum FieldDelivery: Equatable {
     case selectedText, paste
 
-    static func choose(bundleID: String, selectedTextSettable: Bool) -> FieldDelivery? {
+    static func choose(bundleID: String, selectedTextSettable: Bool) -> FieldDelivery {
         // Web-backed Office editors need a paste event to update their document model.
         if ["com.microsoft.Outlook", "com.microsoft.teams2", "com.microsoft.teams"].contains(bundleID) {
             return .paste
         }
-        return selectedTextSettable ? .selectedText : nil
+        return selectedTextSettable ? .selectedText : .paste
     }
 
     static func assess(bundleID: String, role: String?, subrole: String?, enabled: Bool?,
@@ -67,10 +66,7 @@ enum FieldDelivery: Equatable {
         guard subrole != kAXSecureTextFieldSubrole else { return .failure(.secure) }
         guard let role, [kAXTextAreaRole, kAXTextFieldRole].contains(role) else { return .failure(.notText) }
         guard enabled != false else { return .failure(.disabled) }
-        guard let delivery = choose(bundleID: bundleID, selectedTextSettable: selectedTextSettable) else {
-            return .failure(.unsupported)
-        }
-        return .success(delivery)
+        return .success(choose(bundleID: bundleID, selectedTextSettable: selectedTextSettable))
     }
 
 }
@@ -117,7 +113,15 @@ final class ActiveFieldInsertion: InsertionTarget {
         guard AXIsProcessTrusted() else { return .needsAccessibility }
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(appElement, 0.3)
-        guard let element = focusedElement(appElement) else { return .preview(FieldCaptureIssue.noFocus.rawValue) }
+        var element = focusedElement(appElement, expectedPID: app.processIdentifier)
+        if element == nil {
+            // Electron editors may not expose their focused control until AX is enabled.
+            _ = AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            element = focusedElement(appElement, expectedPID: app.processIdentifier)
+        }
+        guard let element else {
+            return .preview(FieldCaptureIssue.noFocus.rawValue)
+        }
         let delivery: FieldDelivery
         switch deliveryMethod(element, bundleID: bundleID) {
         case .success(let method): delivery = method
@@ -153,7 +157,7 @@ final class ActiveFieldInsertion: InsertionTarget {
               NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.3)
-        guard let focused = Self.focusedElement(app), CFEqual(focused, element), Self.deliveryMethod(element, bundleID: bundleID) == .success(delivery),
+        guard let focused = Self.focusedElement(app, expectedPID: pid), CFEqual(focused, element), Self.deliveryMethod(element, bundleID: bundleID) == .success(delivery),
               let selection = Self.selectedRange(element),
               let text = Self.stringAttribute(element, kAXValueAttribute),
               FieldSnapshot(text: text, selection: selection) == snapshot else { return nil }
@@ -218,9 +222,23 @@ final class ActiveFieldInsertion: InsertionTarget {
             selectedTextSettable: writable)
     }
 
-    private static func focusedElement(_ app: AXUIElement) -> AXUIElement? {
-        guard let value = attribute(app, kAXFocusedUIElementAttribute), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+    private static func focusedElement(_ app: AXUIElement, expectedPID: pid_t) -> AXUIElement? {
+        if let focused = focusedElement(on: app), belongsToProcess(focused, pid: expectedPID) {
+            return focused
+        }
+        // Embedded web editors may expose focus only through the system-wide AX object.
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.3)
+        guard let focused = focusedElement(on: system), belongsToProcess(focused, pid: expectedPID) else { return nil }
+        return focused
+    }
+    private static func focusedElement(on owner: AXUIElement) -> AXUIElement? {
+        guard let value = attribute(owner, kAXFocusedUIElementAttribute), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
+    }
+    private static func belongsToProcess(_ element: AXUIElement, pid: pid_t) -> Bool {
+        var focusedPID: pid_t = 0
+        return AXUIElementGetPid(element, &focusedPID) == .success && focusedPID == pid
     }
     private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
         var value: CFTypeRef?
