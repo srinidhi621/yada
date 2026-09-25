@@ -6,7 +6,7 @@
 
 Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Dictation has one default path: preserve the recognizer’s words, tidy spacing, apply any previously saved terminology, and insert. There is no text-mode picker.
 
-**Status:** early personal-development build, not a completed product. On September 25, 2026, Xcode passed all 63 synthetic app tests after shortcut and editor-focus fixes; the 10 tooling tests also passed. The user confirmed real Control+Y dictation in Yada, Notes and TextEdit. Outlook, Teams and Codex insertion failed at focused-field lookup; an updated local testing app is ready at `.build/ready-to-install/Yada.app` for retesting. Cross-app insertion and permissions across upgrades remain open. Do not share this as a finished dictation app. See [verification and limitations](#verification-and-limitations) and the [delivery plan](plan.md).
+**Status:** early personal-development build, not a completed product. On September 25, 2026, Xcode passed all 63 synthetic app tests and the 10 tooling tests passed. After restoring the known-working build, the user confirmed that Control+Y captured speech and inserted text in TextEdit, Notes, Outlook and Teams. The broader acceptance matrix, Codex insertion and permission persistence across upgrades remain open. Do not share this as a finished dictation app. See [verification and limitations](#verification-and-limitations) and the [delivery plan](plan.md).
 
 ## What it does
 
