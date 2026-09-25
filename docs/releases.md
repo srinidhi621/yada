@@ -21,7 +21,7 @@ This runs the isolated tests, builds the production bundle with ad-hoc signing a
 5. For stale duplicate Accessibility rows, quit Yada, remove only the old Yada entries with the minus button, then add `/Applications/Yada.app` with the plus button and enable it. Reopen the installed app. This is user-managed permission repair, not an app preference reset; preserve Application Support folders and all other apps' grants.
 6. Complete the microphone/language setup if requested, then test Control-Y twice in an empty TextEdit document before testing Notes, Outlook and Teams. No mouse interaction with the pill should be needed.
 
-This procedure consolidates the installation but does not guarantee permission retention across ad-hoc rebuilds. Record relaunch/upgrade results before sharing with testers. Existing development history remains in its separate folder; this procedure does not migrate or delete it.
+This procedure consolidates the installation but does not guarantee permission retention across ad-hoc rebuilds. Record relaunch/upgrade results before sharing even with a controlled tester. Existing development history remains in its separate folder; this procedure does not migrate or delete it. The first shareable product is core dictation; the Meetings tab and model formatting are not part of its acceptance gate.
 
 The certificate-based workflow below is optional and deferred. Its stricter checks apply to notarized releases, not the local testing DMG.
 
@@ -73,7 +73,7 @@ This verifies the DMG signature/team, submits it to Apple, saves the response, r
 
 Nothing is published to GitHub. Publishing the DMG, checksum and release notes remains an explicitly authorized GitHub release operation.
 
-## Required acceptance before sharing
+## Required acceptance before a completed release
 
 - Install the notarized DMG on a second Mac with no prior Yada installation. Check Gatekeeper launch, Applications drag installation, microphone and Accessibility guidance, language assets, menu bar and shortcut.
 - Use only synthetic text in TextEdit, Notes, Teams chat compose and Outlook email body. Verify stop/paste, focus protection and Undo without sending a message.
@@ -95,6 +95,12 @@ Updated app builds refuse a second production/development instance before regist
 
 ### Local package evidence, September 7
 
-`package-local.py` completed: 62 app tests passed, Release built, app signature verification passed, and `hdiutil verify` accepted the generated DMG. Ten Python tooling tests passed. The artifact is non-notarized. No installed-app launch, cross-app dictation or permission persistence was established by these checks.
+`package-local.py` completed on September 7: 62 app tests passed, Release built, app signature verification passed, and `hdiutil verify` accepted the generated DMG. On September 25, Xcode independently passed the same 62 synthetic app tests on macOS 26.7, and ten Python tooling tests passed. Packaging was not rerun on September 25. The artifact is non-notarized. No installed-app launch, cross-app dictation or permission persistence was established by these checks.
 
-Source and documentation for the local workflow were pushed to `main` in `cb8c584`. The generated DMG remains local at `.build/local-packages/0.1.0-1-sy9tj63b/Yada-0.1.0-1-arm64-local.dmg`; it is not stored in Git. Testing is paused until the next user session. Start with the installation steps above and the ordered checklist in `plan.md`.
+Source and documentation for the local workflow are on `main`. The generated DMG remains local at `.build/local-packages/0.1.0-1-sy9tj63b/Yada-0.1.0-1-arm64-local.dmg`; it is not stored in Git. Installed-app dictation and second-Mac acceptance remain pending. Start with the installation steps above and the ordered checklist in `plan.md`.
+
+### Updated local build, September 25
+
+After the shortcut lifecycle fix, Xcode passed 63 app tests and built a production-ID Release app. The copy at `.build/shortcut-fix-package/Yada.app` has a verified ad-hoc hardened-runtime signature and microphone entitlement. Its archive at `.build/shortcut-fix-package/Yada-0.1.0-1-arm64-local.zip` passed ZIP integrity checking; the adjacent `.sha256` file records its checksum. The workspace denied both DMG creation and installation at `/Applications/Yada.app`; do not use the older DMG to test this fix.
+
+To test this build, quit every running Yada copy, expand the updated ZIP, and move its `Yada.app` to `/Applications`. Launch it from there, then follow steps 4–6 above for Gatekeeper, user-managed permissions, and a TextEdit Control-Y trial. The app refuses to run from the ZIP extraction folder or Xcode build folder so that new Accessibility requests use the installed location. Do not delete application data or grant unrelated apps access. This local build is not a shareable finished release until physical dictation and insertion pass.

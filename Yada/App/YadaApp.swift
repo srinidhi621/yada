@@ -10,19 +10,16 @@ extension KeyboardShortcuts.Name {
 @main
 struct YadaApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var controller = makeAppController()
-    @State private var language = LanguageSetup()
-    @State private var meeting = MeetingController()
     var body: some Scene {
         Window("Yada", id: "yada") {
-            MainView(controller: controller, language: language, meeting: meeting, delegate: delegate)
+            MainView(controller: delegate.controller, language: delegate.language, meeting: delegate.meeting, delegate: delegate)
         }
         .defaultSize(width: 600, height: 700)
         .windowResizability(.contentMinSize)
         MenuBarExtra {
-            MenuContent(controller: controller, language: language, meeting: meeting)
+            MenuContent(controller: delegate.controller, language: delegate.language, meeting: delegate.meeting)
         } label: {
-            StatusLabel(controller: controller, meeting: meeting)
+            StatusLabel(controller: delegate.controller, meeting: delegate.meeting)
         }
     }
 }
@@ -48,7 +45,7 @@ struct MainView: View {
             }
         }
         .onAppear {
-            delegate.configure(controller: controller, language: language, meeting: meeting) {
+            delegate.setShowWindow {
                 selectedTab = meeting.state == .failed ? 2 : 0
                 openWindow(id: "yada")
                 NSApp.activate()
@@ -67,8 +64,9 @@ struct StatusLabel: View {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var controller: SessionController?
-    private var meeting: MeetingController?
+    let controller = makeAppController()
+    let language = LanguageSetup()
+    let meeting = MeetingController()
     private var showWindow: (() -> Void)?
     private let pill = RecordingPill()
     private let instance = AppInstance()
@@ -89,30 +87,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !mayConfigure { NSApp.terminate(nil) }
     }
 
-    func configure(controller: SessionController, language: LanguageSetup, meeting: MeetingController, showWindow: @escaping () -> Void) {
-        self.showWindow = showWindow
-        guard mayConfigure, self.controller == nil else { return }
-        self.controller = controller
-        self.meeting = meeting
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        guard mayConfigure else { return }
         if !UIValidation.isEnabled && !UIValidation.isTesting {
-            if KeyboardShortcuts.getShortcut(for: .toggleDictation) == nil {
-                KeyboardShortcuts.setShortcut(.init(.y, modifiers: [.control]), for: .toggleDictation)
-            }
-            KeyboardShortcuts.removeHandler(for: .toggleDictation)
-            KeyboardShortcuts.onKeyDown(for: .toggleDictation) {
-                guard !meeting.busy else { showWindow(); return }
-                if !controller.busy && (language.checking || language.downloading) {
-                    showWindow()
-                    return
-                }
-                controller.handleShortcut(locale: language.locale,
-                    setupBusy: language.checking || language.downloading,
-                    capture: { ActiveFieldInsertion.capture() })
-            }
-            checkShortcut()
+            configureShortcut()
         }
         observeState()
         observeMeeting()
+    }
+
+    func setShowWindow(_ showWindow: @escaping () -> Void) {
+        self.showWindow = showWindow
+    }
+
+    private func configureShortcut() {
+        if KeyboardShortcuts.getShortcut(for: .toggleDictation) == nil {
+            KeyboardShortcuts.setShortcut(.init(.y, modifiers: [.control]), for: .toggleDictation)
+        }
+        KeyboardShortcuts.removeHandler(for: .toggleDictation)
+        KeyboardShortcuts.onKeyDown(for: .toggleDictation) { [self] in
+            guard !meeting.busy else { showWindow?(); return }
+            if !controller.busy && (language.checking || language.downloading) {
+                showWindow?()
+                return
+            }
+            controller.handleShortcut(locale: language.locale,
+                setupBusy: language.checking || language.downloading,
+                capture: { ActiveFieldInsertion.capture() })
+        }
+        checkShortcut()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -120,14 +123,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkShortcut() {
-        guard let controller, !UIValidation.isEnabled, !UIValidation.isTesting else { return }
+        guard mayConfigure, !UIValidation.isEnabled, !UIValidation.isTesting else { return }
         KeyboardShortcuts.enable(.toggleDictation)
         controller.shortcutIssue = KeyboardShortcuts.isEnabled(for: .toggleDictation) ? nil :
             "Yada could not register its global shortcut. Another app may be using it. Close the conflicting app, then return to Yada to retry."
     }
 
     private func observeState() {
-        guard let controller else { return }
         let state = withObservationTracking { controller.state } onChange: {
             Task { @MainActor [weak self] in self?.observeState() }
         }
@@ -136,7 +138,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeMeeting() {
-        guard let meeting else { return }
         let state = withObservationTracking { meeting.state } onChange: {
             Task { @MainActor [weak self] in self?.observeMeeting() }
         }
@@ -144,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let meeting, meeting.busy else { return .terminateNow }
+        guard meeting.busy else { return .terminateNow }
         Task { await meeting.finishForQuit(); sender.reply(toApplicationShouldTerminate: true) }
         return .terminateLater
     }

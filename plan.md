@@ -1,33 +1,25 @@
 # Yada build plan
 
-Updated: September 7, 2026. This is the delivery checklist; `Yada_Product_and_Technical_Spec.md` contains the detailed product design. Update this file as work passes its checks. A built feature is not automatically a verified feature.
+Updated: September 25, 2026. This is the delivery checklist; `Yada_Product_and_Technical_Spec.md` contains the detailed product design. A built feature is not automatically a verified feature.
 
 ## Current position
 
-Version 0.1.0 is on `main` (initial release commit `a75d04d`). It includes local Apple transcription, a configurable start/stop shortcut (currently Control+Y), Dock and menu-bar access, a small recording pill, local history of 50 transcripts, and automatic insertion. Native accessible fields use direct selected-text writes. Installed Outlook and Teams use a guarded paste path that leaves the transcript on the local clipboard. No message is sent automatically.
+Version 0.1.0 is on `main`. It includes local Apple transcription, a configurable start/stop shortcut (currently Control+Y), Dock and menu-bar access, a recording pill, local history of 50 transcripts, conservative cleanup and automatic insertion. Native accessible fields use selected-text writes; installed Outlook and Teams use a guarded paste path. No message is sent automatically.
 
-Implementation progress is pushed to `main` through `cb8c584` (September 7): simplified dictation setup, single-instance protection, shortcut registration feedback, and a non-notarized local DMG workflow. The current build passed 62 app tests and 10 Python tooling tests. Release compilation, app signature verification and DMG verification passed. Apple Developer enrollment and notarization are deferred at the user's request.
+On September 25, Xcode passed 62 synthetic app tests on macOS 26.7 and 10 Python tooling tests passed. The September 7 local DMG build passed Release compilation, ad-hoc signature and DMG verification. These checks do not prove real speech or cross-app delivery. The reported failure of Control+Y outside Yada has not been resolved or retested on the installed app. Apple Developer enrollment, Developer ID signing and notarization remain deferred.
 
-The next milestone is installed-app reliability. Control-Y outside Yada, insertion in Notes/TextEdit/Outlook/Teams, duplicate Accessibility cleanup and permission retention have not passed physical acceptance. Testing resumes with the checklist below. The experimental meeting slice is implemented, but live routing and successful file transcription remain unverified.
+**First shareable version:** core dictation only. Press Control+Y in another app, speak, press it again and get one correct insertion in the intended field. Meeting recording, speaker labels, notes and model rewriting are outside this release gate. The current DMG is a local test build, not a completed release.
 
-## Everyday-flow simplification, September 7
+## Immediate priority: prove the installed dictation flow
 
-The user rejected the configuration-heavy dictation UI. The default is now deterministic cleanup and direct insertion with one saved shortcut. Mode selection and model-formatting controls are removed from the main dictation flow. Setup appears only when actual permission/language checks fail or Settings is opened. Language changes persist immediately; existing shortcut and terminology choices survive.
+1. Install one local testing copy at `/Applications/Yada.app` from the verified DMG. Quit obsolete copies first. Use the installed copy, not a DerivedData build, for everyday testing.
+2. Through macOS settings, repair only stale Yada Accessibility entries if needed. Preserve transcripts, meetings and preferences. The user grants microphone, Accessibility and missing speech assets.
+3. Test shortcut registration and key delivery before insertion. If Control+Y still does nothing outside Yada, capture the app state and exact status message, then fix that path and rerun the physical test.
+4. Run the TextEdit, Notes, Outlook and Teams insertion matrix in `docs/mvp2-acceptance.md`. Include stop by shortcut, selection replacement, Undo, cancellation and changed focus. Never send a test message.
+5. Measure cold/warm readiness and finalization, offline speech, first/last-word retention, microphone denial/device changes and Fn coexistence using `docs/mvp1-acceptance.md`.
+6. Quit/relaunch and replace the app at the same path. Confirm settings/history and record any permission repair needed across the ad-hoc update. Then test a fresh installation on a second supported Mac.
 
-A startup guard covers production and development copies and a shared lock prevents two updated builds from owning the microphone/shortcut. The audit found both an old production-identity debug app and the development app running, each ad-hoc signed. A later process check found neither running. No valid signing certificate exists and no canonical installed release exists. Existing Accessibility rows remain OS-owned; installation consolidation and permission repair are still required. Paid certificate setup is deferred. Do not claim permission persistence has been fixed merely by saving app preferences.
-
-## Immediate priority: one installed app and reliable global dictation
-
-The follow-up audit found one running development build, a persisted Control+Y shortcut in both preference domains, and no valid signing certificate. Two Accessibility entries remain, and the user reports that the global shortcut does nothing outside Yada. The shortcut failure is unresolved; stable signing alone is not proof that it is fixed. The latest simplification suite passed 62 tests, but these do not establish physical shortcut delivery.
-
-1. Apple Developer enrollment is parked at the user's request. Build an explicitly non-notarized local testing DMG without paid credentials; do not block dictation fixes on signing.
-2. Build and validate the production identity, then install the everyday app at `/Applications/Yada.app`. Stop launching development build products for everyday testing.
-3. Retire obsolete Yada app copies and repair only Yada's obsolete Accessibility entries through supported macOS controls. Preserve transcript history, meetings and preferences. Do this after the installed replacement is ready, to avoid another permission repair cycle.
-4. Verify shortcut registration and event delivery independently of insertion permissions. Resolve any registration failure or silent busy-state handling before calling the flow complete.
-5. Verify Control+Y starts and stops dictation while Notes, TextEdit, Outlook email body and Teams compose retain focus; verify insertion without clicking the pill or sending a message.
-6. Verify quit/relaunch and an upgrade at the same installation path. Preserve settings/history and record any required permission repair: ad-hoc signing cannot promise grant retention across rebuilds. Each recipient grants permissions on their own Mac; Yada cannot grant itself access.
-
-Local packaging now passed 62 app tests and 10 tooling tests and produced a verified non-notarized DMG. Shortcut registration failures are visible and retried on activation; busy meeting/language gates bring the app forward. No permissions or app copies were removed. Physical shortcut delivery and installation/upgrade acceptance remain open; no root cause for the reported cross-app failure has been confirmed.
+**Gate:** no silent shortcut failure, wrong-target insertion, duplicate delivery or unintended submission; acceptable speech quality and recovery in the tested apps; repeatable setup and upgrade behavior. An ad-hoc build may still need permission repair on upgrade. A completed release also needs Developer ID signing, notarization and second-Mac acceptance if distributed beyond a controlled tester.
 
 ## Ground rules
 
@@ -38,17 +30,6 @@ Local packaging now passed 62 app tests and 10 tooling tests and produced a veri
 - Use existing Swift/AppKit/Speech code. Add dependencies only for a measured capability gap.
 - Agents use synthetic test inputs, never private transcript history, messages or audio. The user grants macOS permissions and runs personal speech tests.
 - Keep source, tests, plans and evidence in this repository. Keep build products and private data out of Git. Use personal GitHub identity and delegate Git writes.
-
-## When you return: test the current app
-
-1. Preserve any current text, then quit Yada using its menu-bar Quit item.
-2. Install the local testing DMG following `docs/releases.md`, eject it, then open `/Applications/Yada.app`. Use this one installation for everyday testing.
-3. If macOS requests it, enable Yada under System Settings → Privacy & Security → Accessibility. Microphone permission is separate. No new library installation is needed for this step.
-4. Open a new TextEdit document and click in it. Press Control+Y, wait for Listening, speak a short non-sensitive sentence, and press Control+Y again. Do not click the pill. Confirm one insertion and no duplicate text.
-5. Repeat in a new Apple Notes note, an unsent Outlook email body and a Teams compose box. Do not send the test message. Confirm the cursor stays in the destination after a verified insertion.
-6. Try replacing selected text, Undo, cancelling, and moving the cursor or switching apps during recording. The latter cases should fall back rather than insert into the wrong destination.
-7. If something fails, report the app/version, field type, action and exact Yada status message. Do not include private text. Record numeric timings from Yada if useful.
-8. Use `docs/mvp2-acceptance.md` for the full 20-trial-per-surface gate. Delete only your synthetic test drafts afterward.
 
 ## Ordered delivery steps
 
@@ -62,7 +43,7 @@ Local packaging now passed 62 app tests and 10 tooling tests and produced a veri
 
 Files: `Yada/Delivery/ActiveFieldInsertion.swift`, controller/UI only where needed, `YadaTests/YadaTests.swift`, `docs/mvp2-acceptance.md`, verification skill.
 
-Gate: no wrong-target insertion, duplicate retry, unintended submission or command execution; honest recovery for unsupported fields. Physical tests remain pending until actually run. Steps 1.1 and 1.2 are implemented; Step 1.3 passes all 29 tests. See the local follow-on section in docs/mvp2-acceptance.md. The user has authorized publishing these implementation changes to main. Steps 1.4 and 1.5 still require physical acceptance.
+Gate: no wrong-target insertion, duplicate retry, unintended submission or command execution; honest recovery for unsupported fields. Physical tests remain pending until actually run. Steps 1.1 and 1.2 are implemented; Step 1.3 passed its 29-test run and is included in the current 62-test suite. See `docs/mvp2-acceptance.md`. Steps 1.4 and 1.5 still require physical acceptance.
 
 ### 2. Conservative cleanup: implemented, default flow simplified
 
@@ -158,6 +139,6 @@ Gate: no silent capture, no repeated nagging, no cloud calendar connector added 
 3. Run `xcodebuild -project Yada.xcodeproj -scheme Yada -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test`.
 4. Perform synthetic native UI checks when UI behavior changes. Keep user-driven microphone/permission checks explicitly pending.
 5. Review the final diff for leftovers, unnecessary layers and privacy/data-loss risks; update this checklist and the existing acceptance records.
-6. Commit and push only within the user's authorized scope. The user has authorized pushing the plan and the completed field-diagnostics changes to `main`. Future publication requires authorization for that scope.
+6. Commit or push only when authorized for the specific changes. Verify the personal account, remote and push access first; checking push access alone does not publish these documentation changes.
 
 Do not start all roadmap phases at once. Complete one slice and its observable behavior before moving to the next; continue independent synthetic work while physical acceptance awaits the user.

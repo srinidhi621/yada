@@ -3,13 +3,13 @@
 **Working name:** Yada  
 **Specification version:** 0.1  
 **Research checked:** September 6, 2026  
-**Status:** Proposed implementation plan, not an implemented or benchmarked application.
+**Status:** Original design record. The app now has an implemented core dictation path and an experimental meeting slice, but installed-app reliability and speech quality are not accepted. The current release scope and evidence are in `plan.md` and `README.md`; historical proposals below are not claims of completed behavior.
 
 ## Current user-approved extension — September 6, 2026
 
 After reporting successful live transcription and copy/paste, the user requested Dock/Command–Tab presence, persistent menu-bar access, a floating recording pill with audio-level animation, and recent transcripts. The user explicitly selected saving transcripts locally between launches. This supersedes the initial no-history default for this personal build: keep the last 50 finalized text results in local Application Support JSON, with individual deletion and Clear history; save no audio. Cancelled sessions are excluded. Preserve the chosen Control+Y shortcut and Wispr's Fn binding. The pill must not take keyboard focus. The user subsequently approved automatic insertion from the global shortcut across supported active applications, without per-app switches. The current implementation uses direct Accessibility selected-text writes with target and text verification for native fields. Following reported failures in installed Outlook/Teams compose fields, these apps use a guarded, process-targeted Command+V with current-host-only clipboard text. The clipboard retains the transcript; no Return or automatic retry is sent. Live compatibility is pending; see docs/mvp2-acceptance.md. Other later slices remain deferred.
 
-The user has now authorized both conservative cleanup and local model formatting. The local implementation adds Raw/Clean and three reviewed formatting modes, exact user-managed terminology, history variants, and a one-shot shortcut to deliver reviewed output to a freshly captured field. Apple Intelligence was disabled at implementation time; live semantic evaluation remains pending. See docs/mvp3-acceptance.md.
+The user later authorized conservative cleanup and a local model formatting experiment. The current everyday flow uses one deterministic cleanup path with saved terminology. The formatting implementation remains in the codebase, but its controls were removed from the everyday UI after synthetic evaluation found semantic failures. See `docs/mvp3-acceptance.md` and `docs/formatting-evaluation-2026-09-07.md`.
 
 ## 1. Decision
 

@@ -1,6 +1,6 @@
 # MVP 1 acceptance
 
-Status: MVP 1 implementation builds; 13 automated tests pass. Native setup and missing-assets error were checked. Physical speech acceptance remains pending.
+Status: MVP 1 implementation builds. Its initial 13-test run passed, and the full 62-test synthetic suite passed in Xcode on September 25, 2026. Native setup and missing-assets error were checked on an earlier build. Physical speech, offline and device-change acceptance remain pending.
 
 ## Environment
 

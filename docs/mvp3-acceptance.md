@@ -1,10 +1,10 @@
 # Cleanup and local formatting acceptance
 
-## Implemented behavior
+## Implemented behavior and current scope
 
-Raw is the default and bypasses transformations. Clean normalizes repeated horizontal spaces in unprotected text and applies the user's exact case-sensitive terminology pairs once, with word boundaries. Explicit quotes, backticks, fenced code, indented lines and line breaks are preserved. These are conservative syntax rules, not general code detection. No rule deletes fillers, changes dates or infers spoken corrections.
+The current everyday dictation path applies deterministic cleanup automatically and keeps the recognizer's raw text in history. The historical Raw mode bypassed transformations; it is no longer a user-facing choice. Cleanup normalizes repeated horizontal spaces in unprotected text and applies the user's exact case-sensitive terminology pairs once, with word boundaries. Explicit quotes, backticks, fenced code, indented lines and line breaks are preserved. These are conservative syntax rules, not general code detection. No rule deletes fillers, changes dates or infers spoken corrections.
 
-Prose, Bullets and Email use one fresh Apple `SystemLanguageModel.default` session with no tools. They preserve the original/cleaned text and require review before delivery. The model is instructed to preserve meaning, remove only obvious fillers and resolve only unambiguous spoken corrections. Prompting is not a guarantee of fidelity. Number comparison produces a warning, not a proof of semantic equivalence. The review flow captures a fresh destination only after the user chooses Use reviewed text and presses the shortcut there; it does not reuse the pre-review target or start recording.
+The experimental Prose, Bullets and Email formatter remains implemented but its controls are removed from the everyday UI. It uses one fresh Apple `SystemLanguageModel.default` session with no tools, preserves original/cleaned text and requires review before delivery. Prompting is not a guarantee of fidelity; the 18-case synthetic evaluation found semantic failures. Number comparison produces a warning, not a proof of semantic equivalence. The historical review flow captures a fresh destination only after the user chooses Use reviewed text and presses the shortcut there; it does not reuse the pre-review target or start recording.
 
 Language support and model availability are checked at request time. Requests over 3,000 UTF-8 bytes are rejected, not truncated. Empty/oversized output, context/refusal errors, cancellation and a 30-second deadline preserve unformatted text. The deadline cancels the request and ignores late output; it cannot guarantee that the system immediately releases all model resources.
 

@@ -6,7 +6,7 @@
 
 Yada is a native macOS dictation app. Press your shortcut, speak, and press it again to insert finalized text into a supported text field. A small recording pill shows when Yada is listening. Dictation has one default path: preserve the recognizer’s words, tidy spacing, apply any previously saved terminology, and insert. There is no text-mode picker.
 
-**Status:** early personal-development build. Progress is on `main` through `cb8c584`. The latest checks passed 62 app tests and 10 tooling tests, and a non-notarized local testing DMG has been built and verified. Installed-app Control-Y and cross-app insertion remain unverified. Paid Apple Developer enrollment is deferred. See [verification and limitations](#verification-and-limitations).
+**Status:** early personal-development build, not a completed product. On September 25, 2026, Xcode passed all 63 synthetic app tests after a shortcut lifecycle fix; the 10 tooling tests also passed. A signed local testing ZIP is available, but installation into `/Applications` was denied in this workspace. Control+Y from another app, real speech, cross-app insertion and permissions across upgrades still need physical acceptance. Do not share this as a finished dictation app. See [verification and limitations](#verification-and-limitations) and the [delivery plan](plan.md).
 
 ## What it does
 
@@ -130,9 +130,9 @@ xcodebuild -project Yada.xcodeproj -scheme Yada \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test
 ```
 
-**Recorded result, September 6, 2026:** 41 tests passed with zero failures. Coverage includes transcript finalization, cancellation, insertion eligibility, history persistence and compatibility, cleanup rules, model failure/deadline handling, and reviewed insertion. The timeout regression deliberately takes 30 seconds.
+**Current automated result, September 25, 2026:** 63 app tests passed in Xcode on an Apple Silicon Mac running macOS 26.7, and 10 Python tooling tests passed. The app suite covers transcript finalization, cancellation, insertion eligibility, history persistence, cleanup rules, permission setup and meeting capture with fake sources. The model timeout regression deliberately takes 30 seconds. Xcode built the updated Release app; its ad-hoc hardened-runtime signature and microphone entitlement were verified, and a ZIP archive passed an integrity check. DMG creation and installation were denied by the local environment, so physical dictation remains unverified.
 
-Tests use synthetic inputs. They do not establish real microphone quality, offline behavior, application compatibility or model fidelity. Native UI automation was unavailable during the latest formatting checks, and Apple Intelligence was disabled on the development Mac, so interactive UI and live model evaluation remain pending.
+Tests use synthetic inputs. They do not establish real microphone quality, offline behavior, application compatibility or model fidelity. Native UI automation was unavailable during the latest formatting checks. A later synthetic Apple model evaluation found semantic failures, so model formatting remains outside the everyday dictation flow.
 
 A Debug-only `--ui-preview` driver uses synthetic recognition/formatting, in-memory history/settings and no registered global shortcut. Use the isolated bundle procedure in the [verification skill](.agents/skills/verify-project/SKILL.md); do not use private transcripts as test fixtures.
 
@@ -156,7 +156,7 @@ Yada uses Swift 6, SwiftUI/AppKit, AVAudioEngine, SpeechAnalyzer/SpeechTranscrib
 | `Yada/Text/` | Cleanup, terminology and local formatting |
 | `YadaTests/` | Synthetic regression tests |
 
-The next priority is installing one everyday copy and testing Control-Y and insertion in TextEdit, Notes, Outlook and Teams. Local packaging and the first meeting-recording slice are implemented. Live meeting acceptance, speaker labels and grounded meeting notes remain pending. Model-formatting controls are removed from the everyday UI.
+The next priority is installing one everyday copy and testing Control+Y and insertion in TextEdit, Notes, Outlook and Teams. Then verify relaunch, upgrade, offline speech and permission retention on this Mac and a second supported Mac. Local packaging and the first meeting-recording slice are implemented; meeting acceptance, speaker labels and grounded notes remain separate future work.
 
 - [Build plan](plan.md): ordered work and instructions for resuming testing.
 - [Product and technical specification](Yada_Product_and_Technical_Spec.md): design decisions and future scope.

@@ -33,3 +33,13 @@ Progress is on `main` in `cb8c584`. The user reported that Control-Y does nothin
 The app now checks shortcut registration, shows failure feedback and retries registration on activation. Meeting/language busy gates bring Yada forward instead of silently ignoring a start request. The simplified app and local package passed 62 automated app tests. These changes have not yet demonstrated working global event delivery on the installed app.
 
 Next session: install the local DMG at `/Applications/Yada.app`, complete user-managed permission repair if needed, then test Control-Y start/stop in TextEdit, Notes, Outlook email body and Teams compose. Follow with quit/relaunch and same-path upgrade checks. Do not mark compatibility or permission persistence passed until observed. No permission reset or deletion of user data was performed.
+
+## September 25 core-dictation verification
+
+Xcode's macOS 26.7 test report shows 62 synthetic app tests passed, including `testShortcutStartsThenStopsAndInsertsWithoutRecapturingTarget`. Ten Python packaging/tooling tests also passed. The command-line Xcode runner could not load CoreSimulator through the workspace sandbox; running the suite in the Xcode app completed successfully. No installed-app keyboard, microphone, Accessibility or cross-app check was performed in this run. The first shareable version is limited to core dictation; the physical acceptance matrix above remains the release gate.
+
+## September 25 shortcut and duplicate-entry investigation
+
+The current Mac had no `/Applications/Yada.app` when inspected. The enabled and disabled Accessibility rows in the user's screenshot therefore cannot both refer to a currently installed canonical app. Prior ad-hoc builds or different launch locations are the likely source, but the exact historic paths are unconfirmed. Yada cannot remove macOS Accessibility records itself.
+
+Code inspection found a separate shortcut lifecycle defect: registration ran only from the main window's `onAppear`. It now runs from `applicationDidFinishLaunching`, including a menu-only launch. Release builds refuse to start outside `/Applications/Yada.app` and report a differently located running copy instead of silently activating it. Xcode passed 63 synthetic tests, including the canonical-installation check. Xcode built the Release app and its hardened-runtime signature and microphone entitlement were verified. The workspace denied copying it into `/Applications`, so there is still no live proof of Control-Y or insertion. Install the updated local ZIP as described in `docs/releases.md`, repair only stale Yada Accessibility rows, and run the physical matrix above.

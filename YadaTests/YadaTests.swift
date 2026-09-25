@@ -1011,4 +1011,10 @@ final class EverydaySetupTests: XCTestCase {
         XCTAssertEqual(AppInstance.existingPID([(1, "com.srinidhi621.yada.dev")], currentPID: 2), 1)
         XCTAssertNil(AppInstance.existingPID([(1, "com.srinidhi621.yada.preview"), (2, "com.srinidhi621.yada")], currentPID: 2))
     }
+
+    func testReleaseMustLaunchFromCanonicalInstallation() {
+        XCTAssertTrue(AppInstance.validLocation(bundleID: "com.srinidhi621.yada", bundleURL: URL(fileURLWithPath: "/Applications/Yada.app")))
+        XCTAssertFalse(AppInstance.validLocation(bundleID: "com.srinidhi621.yada", bundleURL: URL(fileURLWithPath: "/Volumes/Yada Local Test/Yada.app")))
+        XCTAssertTrue(AppInstance.validLocation(bundleID: "com.srinidhi621.yada.dev", bundleURL: URL(fileURLWithPath: "/tmp/Yada.app")))
+    }
 }
