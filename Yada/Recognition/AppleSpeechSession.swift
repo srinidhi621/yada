@@ -4,6 +4,10 @@ import Speech
 
 @MainActor
 final class AppleSpeechSession: RecognitionSession {
+    static func transcriber(locale: Locale) -> SpeechTranscriber {
+        SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
+    }
+
     private var audio: AudioCapture?
     private var analyzer: SpeechAnalyzer?
     private var resultTask: Task<Void, Error>?
@@ -19,7 +23,7 @@ final class AppleSpeechSession: RecognitionSession {
             throw YadaError("This language is not supported by Apple on-device transcription. Choose another language.")
         }
         try checkCancellation()
-        let transcriber = SpeechTranscriber(locale: supported, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
+        let transcriber = Self.transcriber(locale: supported)
         guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
             throw YadaError("Speech language assets are missing. Use Download language in setup before recording.")
         }

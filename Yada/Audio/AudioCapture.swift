@@ -1,6 +1,5 @@
 import AVFoundation
 import Speech
-import Synchronization
 
 /// Copies tap-owned memory into a bounded stream. No inference, disk or UI work in the tap.
 final class AudioCapture {
@@ -106,15 +105,11 @@ final class AudioConverter: @unchecked Sendable {
         guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: frames) else {
             throw YadaError("Could not allocate a recognition audio buffer.")
         }
-        let supplied = Mutex(false)
+        var supplied = false
         var error: NSError?
         let status = converter.convert(to: output, error: &error) { _, state in
-            let first = supplied.withLock { value in
-                if value { return false }
-                value = true
-                return true
-            }
-            guard first else { state.pointee = .noDataNow; return nil }
+            guard !supplied else { state.pointee = .noDataNow; return nil }
+            supplied = true
             state.pointee = .haveData
             return input.buffer
         }

@@ -244,11 +244,12 @@ struct ContentView: View {
                         Label(permissions.accessibility ? "Text insertion ready" : "Text insertion access needed", systemImage: permissions.accessibility ? "checkmark.circle" : "keyboard")
                         Spacer()
                         if !permissions.accessibility {
+                            Button("Check access") { refreshPermissions() }.disabled(UIValidation.isEnabled)
                             Button("Open Accessibility settings") { ActiveFieldInsertion.requestAccessibility() }.disabled(UIValidation.isEnabled)
                         }
                     }
                     if !permissions.accessibility {
-                        Text("Enable Yada in Accessibility, then return here. We check again automatically. If it is already enabled, quit and reopen Yada; an older development build may need to be removed and added again.").font(.caption)
+                        Text("This running Yada app does not have Accessibility access. If Yada is already enabled in macOS Settings, that entry may belong to an older build. Quit Yada, remove the Yada entries only, add /Applications/Yada.app, enable it, and reopen Yada. Then choose Check access.").font(.caption)
                     }
                     if showSettings {
                         Divider()
@@ -274,15 +275,15 @@ struct ContentView: View {
                     }
                     if !language.installed || showSettings {
                     HStack {
-                        Button("Check language") { Task { await language.check() } }.disabled(UIValidation.isEnabled)
+                        Button("Check language") { Task { await language.check() } }.disabled(language.checking || language.downloading || UIValidation.isEnabled)
                         Button("Download language") { Task { await language.download() } }
-                            .disabled(language.installed || language.locales.isEmpty || UIValidation.isEnabled)
+                            .disabled(language.installed || language.checking || language.downloading || UIValidation.isEnabled)
                     }
                     Text(language.status).font(.caption).fixedSize(horizontal: false, vertical: true)
                     if language.downloading { ProgressView(value: language.progress).accessibilityLabel("Language download progress") }
                     }
                 }.padding(6)
-            }.disabled(controller.busy || language.checking || language.downloading)
+            }.disabled(controller.busy)
             }
             Text(controller.message).fixedSize(horizontal: false, vertical: true)
             if let error = controller.history.errorMessage {

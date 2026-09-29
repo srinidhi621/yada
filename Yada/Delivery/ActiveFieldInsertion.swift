@@ -136,6 +136,9 @@ final class ActiveFieldInsertion: InsertionTarget {
         guard let snapshot = FieldSnapshot(text: text, selection: selection) else {
             return .preview(FieldCaptureIssue.invalidSelection.rawValue)
         }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
+            return .preview("The active application changed before recording. Click the destination and try again.")
+        }
         AXUIElementSetMessagingTimeout(element, 0.3)
         return .target(ActiveFieldInsertion(pid: app.processIdentifier, bundleID: bundleID, element: element, snapshot: snapshot, delivery: delivery))
     }
@@ -223,18 +226,26 @@ final class ActiveFieldInsertion: InsertionTarget {
     }
 
     private static func focusedElement(_ app: AXUIElement, expectedPID: pid_t) -> AXUIElement? {
-        if let focused = focusedElement(on: app), belongsToProcess(focused, pid: expectedPID) {
-            return focused
-        }
-        // Embedded web editors may expose focus only through the system-wide AX object.
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == expectedPID else { return nil }
+        // The front app's own AX tree can return a focused editor hosted by a helper process.
+        if let focused = focusedElement(on: app) { return focused }
+        if let window = elementAttribute(app, kAXFocusedWindowAttribute),
+           let focused = focusedElement(on: window) { return focused }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == expectedPID else { return nil }
+        // A system-wide result has no app-tree provenance, so keep the PID check here.
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, 0.3)
         guard let focused = focusedElement(on: system), belongsToProcess(focused, pid: expectedPID) else { return nil }
         return focused
     }
-    private static func focusedElement(on owner: AXUIElement) -> AXUIElement? {
-        guard let value = attribute(owner, kAXFocusedUIElementAttribute), CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+    private static func elementAttribute(_ owner: AXUIElement, _ name: String) -> AXUIElement? {
+        guard let value = attribute(owner, name), CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
         return (value as! AXUIElement)
+    }
+    private static func focusedElement(on owner: AXUIElement) -> AXUIElement? {
+        elementAttribute(owner, kAXFocusedUIElementAttribute)
     }
     private static func belongsToProcess(_ element: AXUIElement, pid: pid_t) -> Bool {
         var focusedPID: pid_t = 0
