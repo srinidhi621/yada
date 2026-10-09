@@ -19,7 +19,8 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     probe = OUT / 'probe'
     subprocess.run(['xcrun', 'swiftc', '-swift-version', '6',
-                    'Yada/App/PermissionSetup.swift', 'Yada/Text/TextCleanup.swift',
+                    'Yada/App/AppStorage.swift', 'Yada/App/PermissionSetup.swift',
+                    'Yada/Text/TextCleanup.swift', 'Yada/Text/FormatReview.swift',
                     'Yada/Text/LocalFormatter.swift', 'scripts/FormattingProbe.swift', '-o', str(probe)], cwd=ROOT, check=True)
     results = []
     for case, passage in CASES:

@@ -136,7 +136,7 @@ Gate: no silent capture, no repeated nagging, no cloud calendar connector added 
 
 1. Inspect the working tree and relevant implementation; preserve unrelated work.
 2. Implement the smallest complete change and meaningful regression fixtures.
-3. Run `xcodebuild -project Yada.xcodeproj -scheme Yada -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test`.
+3. Run `xcodebuild -project Yada.xcodeproj -scheme Yada -destination 'platform=macOS,arch=arm64' -derivedDataPath .build test`. On a non-Mac host, run `swift test --package-path YadaLogic` for the portable subset only and leave the Xcode result unclaimed.
 4. Perform synthetic native UI checks when UI behavior changes. Keep user-driven microphone/permission checks explicitly pending.
 5. Review the final diff for leftovers, unnecessary layers and privacy/data-loss risks; update this checklist and the existing acceptance records.
 6. Commit or push only when authorized for the specific changes. Verify the personal account, remote and push access first; checking push access alone does not publish these documentation changes.

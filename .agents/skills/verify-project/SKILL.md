@@ -14,6 +14,8 @@ Run from the Yada repository. Read docs/mvp1-acceptance.md for the current evide
 
 MVP 1 proof map: revised/late transcript results and end-of-stream behavior → TranscriptTests; rapid toggles, cancellation, stale sessions and finalization → LifecycleTests; real audio, offline behavior, device changes, permissions, clipboard and Fn coexistence → manual acceptance matrix. Automated success does not prove physical audio success.
 
+On a non-Mac host, skip `xcodebuild`. `swift test --package-path YadaLogic` runs only the portable logic suite (transcript assembly, cleanup, history files, meeting chunk rules, and transcript timestamps). Do not treat that result as an app build, microphone check, or speech test.
+
 ## Desktop and local-history extension
 
 The user approved saving the last 50 finalized transcripts between launches. Real history is private at `~/Library/Application Support/Yada/RecentTranscripts.json`: do not open it or capture real transcript UI for verification. Tests inject isolated temporary history files and cover restart, deletion, corrupt data, failed writes, retention and cancellation. The panel test renders only a synthetic view to `.build/pill-preview.png`.

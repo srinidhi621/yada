@@ -42,6 +42,32 @@ final class TranscriptTests: XCTestCase {
         transcript.receive(segment(0, 2, "One two.", final: true))
         XCTAssertEqual(transcript.preview, "One two.")
     }
+    func testOutOfOrderFinalsSortAndRejectInvalidRanges() {
+        var transcript = Transcript()
+        transcript.receive(segment(2, 3, " second", final: true))
+        transcript.receive(segment(0, 1, "first ", final: true))
+        transcript.receive(segment(3, 2, "backwards", final: true))
+        transcript.receive(segment(.nan, 1, "bad"))
+        transcript.receive(segment(0, .infinity, "bad"))
+        XCTAssertEqual(transcript.finalText, "first  second")
+        transcript.receive(segment(1, 2, " middle", final: true))
+        XCTAssertEqual(transcript.preview, "first  middle second")
+    }
+    func testFinishDropsNonOverlappingProvisionalsAndKeepsTouchingFinals() {
+        var transcript = Transcript()
+        transcript.receive(segment(0, 1, "keep "))
+        transcript.receive(segment(2, 3, "stay", final: true))
+        XCTAssertEqual(transcript.preview, "keep stay")
+        transcript.finish()
+        XCTAssertEqual(transcript.finalText, "stay")
+        transcript.receive(segment(0, 1, "A", final: true))
+        transcript.receive(segment(1, 2, "B", final: true))
+        XCTAssertEqual(transcript.finalText, "stay")
+        var adjacent = Transcript()
+        adjacent.receive(segment(0, 1, "A", final: true))
+        adjacent.receive(segment(1, 2, "B", final: true))
+        XCTAssertEqual(adjacent.finalText, "AB")
+    }
 }
 
 @MainActor
@@ -508,6 +534,23 @@ final class CleanupTests: XCTestCase {
     func testModelNumberWarningIsNotAnEquivalenceClaim() {
         XCTAssertTrue(FormatReview.warning(original: "Pay 120", formatted: "Pay 200").contains("Numbers"))
         XCTAssertTrue(FormatReview.warning(original: "Do not pay 120", formatted: "Pay 120").contains("meaning"))
+        XCTAssertTrue(FormatReview.warning(original: "120 and 120", formatted: "120").contains("Numbers"))
+        XCTAssertTrue(FormatReview.warning(original: "See 01/02", formatted: "See 01/02").contains("meaning"))
+    }
+    func testLongerTerminologyWinsAndMetacharactersStayLiteral() {
+        let terms = [TermReplacement(source: "York", replacement: "Y"), TermReplacement(source: "New York", replacement: "NYC")]
+        XCTAssertEqual(TextCleanup.apply("New York and York", replacements: terms), "NYC and Y")
+        XCTAssertEqual(TextCleanup.apply("pay 1.20 now", replacements: [TermReplacement(source: "1.20", replacement: "1.50")]), "pay 1.50 now")
+        XCTAssertEqual(TextCleanup.apply("a+b a", replacements: [TermReplacement(source: "a+b", replacement: "sum")]), "sum a")
+    }
+    func testDuplicateAndEmptyTermsDoNotCrashOrDeleteText() {
+        let terms = [TermReplacement(source: "yada", replacement: "Yada"), TermReplacement(source: "yada", replacement: "Wrong"), TermReplacement(source: "", replacement: "nope")]
+        XCTAssertEqual(TextCleanup.apply("yada  yada", replacements: terms), "Yada Yada")
+        XCTAssertEqual(TextCleanup.apply("yada  app", replacements: [TermReplacement(source: "yada", replacement: "")]), "yada app")
+    }
+    func testFencedCodeAndCurlyQuotesKeepInternalSpacing() {
+        let raw = "hello  world\n```\nlet  x = 1\n```\nSay “two  spaces”\nbye  now"
+        XCTAssertEqual(TextCleanup.apply(raw, replacements: []), "hello world\n```\nlet  x = 1\n```\nSay “two  spaces”\nbye now")
     }
 }
 
@@ -962,6 +1005,28 @@ final class MeetingTests: XCTestCase {
         XCTAssertFalse(meeting.busy)
     }
 
+    func testChunkRulesRejectTraversalAndInvalidTiming() {
+        var seen = Set<String>()
+        XCTAssertTrue(MeetingChunkRules.accepts(MeetingChunk(file: "microphone-1.caf", track: .microphone, startSeconds: 0, durationSeconds: 5), seen: &seen))
+        XCTAssertFalse(MeetingChunkRules.accepts(MeetingChunk(file: "microphone-1.caf", track: .microphone, startSeconds: 0, durationSeconds: 5), seen: &seen))
+        XCTAssertFalse(MeetingChunkRules.accepts(MeetingChunk(file: "../private.caf", track: .remote, startSeconds: 0, durationSeconds: 1), seen: &seen))
+        XCTAssertFalse(MeetingChunkRules.accepts(MeetingChunk(file: "note.txt", track: .remote, startSeconds: 0, durationSeconds: 1), seen: &seen))
+        XCTAssertFalse(MeetingChunkRules.accepts(MeetingChunk(file: "dir\\file.caf", track: .remote, startSeconds: 0, durationSeconds: 1), seen: &seen))
+        XCTAssertFalse(MeetingChunkRules.accepts(MeetingChunk(file: "remote-1.caf", track: .remote, startSeconds: -1, durationSeconds: 1), seen: &seen))
+        XCTAssertTrue(MeetingChunkRules.accepts(MeetingChunk(file: "remote-1.caf", track: .remote, startSeconds: 0, durationSeconds: 1), seen: &seen))
+        XCTAssertFalse(MeetingChunkRules.accepts(MeetingChunk(file: "remote-2.caf", track: .remote, startSeconds: 0, durationSeconds: 0), seen: &seen))
+        XCTAssertFalse(MeetingChunkRules.accepts(MeetingChunk(file: "remote-3.caf", track: .remote, startSeconds: .infinity, durationSeconds: 1), seen: &seen))
+    }
+    func testTranscriptClockRoundsFiftyNineSecondsIntoTheNextMinute() {
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(0), "00:00.0")
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(5), "00:05.0")
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(65.12), "01:05.1")
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(59.94), "00:59.9")
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(59.96), "01:00.0")
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(119.96), "02:00.0")
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(.nan), "--:--.-")
+        XCTAssertEqual(MeetingTranscriptClock.timestamp(-1), "--:--.-")
+    }
     func testTranscriberRejectsUnsafeManifestBeforeInference() async throws {
         let root = temporaryRoot(); defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

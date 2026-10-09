@@ -1,25 +1,5 @@
 import AVFoundation
 
-// Track labels describe capture sources, not speaker identities.
-enum MeetingTrack: String, Codable, Sendable, CaseIterable {
-    case microphone, remote
-    var label: String { self == .microphone ? "Local microphone" : "Selected app audio" }
-}
-
-struct MeetingChunk: Codable, Sendable {
-    let file: String
-    let track: MeetingTrack
-    let startSeconds: Double
-    let durationSeconds: Double
-}
-
-struct MeetingManifest: Codable, Sendable {
-    let id: UUID
-    let startedAt: Date
-    var status: String
-    var chunks: [MeetingChunk]
-}
-
 /// Serial disk writer. Audio callbacks only copy/yield buffers to a bounded stream.
 actor MeetingArchive {
     nonisolated let directory: URL
