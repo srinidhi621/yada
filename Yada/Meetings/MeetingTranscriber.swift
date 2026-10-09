@@ -12,16 +12,10 @@ final class MeetingTranscriber {
         let root = directory.resolvingSymlinksInPath().standardizedFileURL
         var filenames = Set<String>()
         for chunk in manifest.chunks {
-            let name = chunk.file
-            guard !name.isEmpty, name == (name as NSString).lastPathComponent,
-                  !name.contains("/"), !name.contains("\\"), (name as NSString).pathExtension == "caf",
-                  filenames.insert(name).inserted,
-                  chunk.startSeconds.isFinite, chunk.startSeconds >= 0,
-                  chunk.durationSeconds.isFinite, chunk.durationSeconds > 0,
-                  (chunk.startSeconds + chunk.durationSeconds).isFinite else {
+            guard MeetingChunkRules.accepts(chunk, seen: &filenames) else {
                 throw YadaError("The meeting manifest contains an invalid audio chunk.")
             }
-            let file = root.appendingPathComponent(name).resolvingSymlinksInPath().standardizedFileURL
+            let file = root.appendingPathComponent(chunk.file).resolvingSymlinksInPath().standardizedFileURL
             guard file.deletingLastPathComponent() == root,
                   try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
                 throw YadaError("A meeting audio chunk is not a regular file inside its recording folder.")
@@ -114,6 +108,6 @@ final class MeetingTranscriber {
     }
 
     private func timestamp(_ seconds: Double) -> String {
-        String(format: "%02.0f:%04.1f", floor(seconds / 60), seconds.truncatingRemainder(dividingBy: 60))
+        MeetingTranscriptClock.timestamp(seconds)
     }
 }

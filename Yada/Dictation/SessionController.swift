@@ -366,8 +366,3 @@ final class SessionController {
         return Double(value.seconds) * 1000 + Double(value.attoseconds) / 1e15
     }
 }
-
-struct YadaError: Error {
-    let message: String
-    init(_ message: String) { self.message = message }
-}

@@ -43,11 +43,3 @@ final class PermissionSetup {
         NSWorkspace.shared.open(url)
     }
 }
-
-// Development builds never open the everyday app's saved history or cleanup settings.
-enum AppStorage {
-    static var directory: URL {
-        let name = Bundle.main.bundleIdentifier == "com.srinidhi621.yada.dev" ? "Yada Development" : "Yada"
-        return URL.applicationSupportDirectory.appending(path: name)
-    }
-}

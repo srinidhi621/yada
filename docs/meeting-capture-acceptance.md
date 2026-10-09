@@ -20,6 +20,7 @@ Saved meetings can be reopened, transcribed, revealed in Finder for local export
 - `scripts/MeetingFileProbe.swift` exercised production chunk writing with a generated speech file. The speech service rejected transcription at its installed-module guard for en-US and en-IN. A read-only probe listed English locales as installed, but `AssetInventory.status` returned `supported`, not `installed`, for the transcription module. No readiness guard was bypassed and no assets were downloaded. Successful end-to-end speech transcription remains unverified.
 - Final meeting-specific rerun: all nine tests passed after status/menu refinements, at `.build/meeting-tests/Logs/Test/Test-Yada-2026.09.07_01-29-56-+0530.xcresult`.
 - Core Audio backend and transcription service typechecked against Swift 6 and the installed SDK. No live microphone or selected-process capture was invoked by the agent.
+- Transcript timestamps round to the nearest tenth and carry 59.95 seconds into the next minute, so a boundary cannot display as `00:60.0`. The clock text does not depend on the decimal separator of the current locale. `swift test --package-path YadaLogic` covers this clock and the manifest chunk-name checks. It does not transcribe audio.
 
 ## Repeatable synthetic commands
 
@@ -29,7 +30,7 @@ From the repository:
 xcodebuild -project Yada.xcodeproj -scheme Yada -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/meeting-tests test
 mkdir -p .build/meeting-file-probe
 say -o .build/meeting-file-probe/synthetic.aiff 'The meeting is on Thursday. Do not send the draft.'
-xcrun swiftc -swift-version 6 Yada/Meetings/MeetingArchive.swift Yada/Meetings/MeetingAudioSource.swift Yada/Meetings/MeetingTranscriber.swift scripts/MeetingFileProbe.swift -o .build/meeting-file-probe/probe
+xcrun swiftc -swift-version 6 Yada/Meetings/MeetingModels.swift Yada/Meetings/MeetingArchive.swift Yada/Meetings/MeetingAudioSource.swift Yada/Meetings/MeetingTranscriber.swift scripts/MeetingFileProbe.swift -o .build/meeting-file-probe/probe
 .build/meeting-file-probe/probe .build/meeting-file-probe .build/meeting-file-probe/synthetic.aiff en-IN
 ```
 

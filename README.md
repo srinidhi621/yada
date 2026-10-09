@@ -132,6 +132,14 @@ xcodebuild -project Yada.xcodeproj -scheme Yada \
 
 **Current automated result, September 25, 2026:** 63 app tests passed in Xcode on an Apple Silicon Mac running macOS 26.7, and 10 Python tooling tests passed. The app suite covers transcript finalization, cancellation, insertion eligibility, history persistence, cleanup rules, permission setup and meeting capture with fake sources. The model timeout regression deliberately takes 30 seconds. Xcode built the latest Release app; its ad-hoc hardened-runtime signature and microphone entitlement were verified. The user confirmed live dictation in Yada, Notes and TextEdit; Outlook, Teams and Codex must be retested with the updated build.
 
+Portable logic tests do not need Xcode. From the repository root, with Swift 6.2 or newer:
+
+```sh
+swift test --package-path YadaLogic
+```
+
+That suite covers transcript assembly, cleanup and terminology, local history files, meeting chunk-name checks, and meeting transcript timestamps. It does not build the Mac app or exercise the microphone, Accessibility, or Apple speech frameworks. Cases added after September 25 are in both `YadaLogic` and the Xcode suite; they are not part of the 63-test count above until you run the Xcode command again.
+
 Tests use synthetic inputs. They do not establish real microphone quality, offline behavior, application compatibility or model fidelity. Native UI automation was unavailable during the latest formatting checks. A later synthetic Apple model evaluation found semantic failures, so model formatting remains outside the everyday dictation flow.
 
 A Debug-only `--ui-preview` driver uses synthetic recognition/formatting, in-memory history/settings and no registered global shortcut. Use the isolated bundle procedure in the [verification skill](.agents/skills/verify-project/SKILL.md); do not use private transcripts as test fixtures.
@@ -155,6 +163,7 @@ Yada uses Swift 6, SwiftUI/AppKit, AVAudioEngine, SpeechAnalyzer/SpeechTranscrib
 | `Yada/Delivery/` | Active-field checks and insertion |
 | `Yada/Text/` | Cleanup, terminology and local formatting |
 | `YadaTests/` | Synthetic regression tests |
+| `YadaLogic/` | Portable logic tests that run with `swift test` and no Xcode |
 
 The next priority is testing the updated build's Control+Y insertion in Outlook, Teams and Codex, then completing the wider app matrix. After that, verify relaunch, upgrade, offline speech and permission retention on this Mac and a second supported Mac. Local packaging and the first meeting-recording slice are implemented; meeting acceptance, speaker labels and grounded notes remain separate future work.
 

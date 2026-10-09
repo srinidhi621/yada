@@ -75,9 +75,15 @@ enum TextCleanup {
     private static let protected = try! NSRegularExpression(pattern: #"```[\s\S]*?(?:```|$)|`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|(?<![\p{L}\p{N}])'[^'\n]*'|(?m:^\h{2,}[^\n]*$)|(?m:^\t[^\n]*$)"#)
 
     static func apply(_ raw: String, replacements: [TermReplacement]) -> String {
-        let lookup = Dictionary(uniqueKeysWithValues: replacements.map { ($0.source, $0.replacement) })
-        let alternatives = replacements.map(\.source).sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
-        let terms = replacements.isEmpty ? nil : try! NSRegularExpression(pattern: "(?<![\\p{L}\\p{M}\\p{N}_])(?:" + alternatives + ")(?![\\p{L}\\p{M}\\p{N}_])")
+        // Skip blank or repeated sources. A repeated key used to trap, and an empty source matches every position.
+        var lookup: [String: String] = [:]
+        var sources: [String] = []
+        for term in replacements where !term.source.isEmpty && !term.replacement.isEmpty && lookup[term.source] == nil {
+            lookup[term.source] = term.replacement
+            sources.append(term.source)
+        }
+        let alternatives = sources.sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
+        let terms = alternatives.isEmpty ? nil : try! NSRegularExpression(pattern: "(?<![\\p{L}\\p{M}\\p{N}_])(?:" + alternatives + ")(?![\\p{L}\\p{M}\\p{N}_])")
 
         func clean(_ text: String) -> String {
             let normalized = text.replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
